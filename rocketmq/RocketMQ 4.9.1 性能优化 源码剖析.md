@@ -69,7 +69,7 @@ while (true) {
 
 如下图，消费者正在处理数据的同时，生产者可以不受影响的继续添加数据，第一阶段生产者 Buffer 有 3 条数据，消费者 Buffer 有 2 条数据，由于消费者是单线程，没有别的线程跟它竞争，所以它可以批量处理这 2 条数据，完成后它会交换这两个 Buffer 的引用，于是接下来的第二阶段它又可以批量处理 3 条数据。
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215540.png)
 
 ### 优化1：主从复制和同步刷盘中重量级锁synchronized改为自旋锁
 
@@ -77,7 +77,7 @@ while (true) {
 
 实际 `putRequest()` 方法中只做了添加数据到列表的操作；`swapRequests()` 中做了交换操作，耗时都较小，故可以换成自旋锁。每次加解锁都**只有 2 次 CAS 操作的开销，而不发生线程切换**。
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%201.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215541.png)
 
 ### 优化2：WaitNotifyObject 类
 
@@ -95,7 +95,7 @@ while (true) {
 
 `volatile boolean hasNotified` 改为 `AtomicBoolean hasNotified`
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%202.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215542.png)
 
 ## 消除主从复制中不必要的数组拷贝（5）
 
@@ -108,7 +108,7 @@ while (true) {
 
 RocketMQ 的 CommitLog 是内存映射文件（mmap）。下面这张图对比了普通 IO 和内存映射 IO 之间的区别。
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%203.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215543.png)
 
 mmap 将文件直接映射到用户内存，使得对文件的操作不用再需要拷贝到PageCache，而是转化为对映射地址映射的PageCache的操作，使随机读写文件和读写内存拥有相似的速度（随机地址被映射到了内存）
 
@@ -132,7 +132,7 @@ RocketMQ 主从复制机制会在消息写入 CommitLog 之后，Master Broker �
 
 原先在主从复制逻辑中的数组拷贝步骤其实是可以省略的，可以直接把从 Master 读到的 ByteBuffer 传到写 CommitLog 的方法中，并且一并传入数据的开始位置和长度，这样就可以在不重新复制字节数组的情况下传递 ByteBuffer 中的数据。
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%204.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215544.png)
 
 ## 移除 CommitLog 中包含重复代码的 putMessage/putMessages 方法（6）
 
@@ -152,9 +152,9 @@ RocketMQ 主从复制机制会在消息写入 CommitLog 之后，Master Broker �
 
 这个 Patch 合并了 putMessage & asyncPutMessage 、putMessages & asyncPutMessages 方法，在同步方法中调用异步方法的等待方法，删除了大量重复代码。
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%205.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215545.png)
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%206.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215546.png)
 
 ## 调整消息发送几个参数的默认值（7）
 
@@ -211,7 +211,7 @@ CommitLog 是 RocketMQ 消息存储文件。单个 Broker 上所有消息都顺�
 
 先看一下代码上的改动，右边绿色新增的代码是原先在锁中的操作，现在都移动到了锁外面。
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%207.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215547.png)
 
 右边新增的的 `putMessageThreadLocal.getEncode().encode(msg)` 完成了大量预操作，将原先 `CommitLog#DefaultAppendMessageCallback#doAppend()` 方法中的操作移动到了锁外。
 
@@ -375,7 +375,7 @@ protected PutMessageResult encode(MessageExtBrokerInner msgInner) {
 
 然后把预编码的数据放到 `MessageExtBrokerInner` 中的 `private ByteBuffer encodedBuff` 字段，传到 `doAppend()` 方法中使用
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%208.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215548.png)
 
 ### **MessageId 懒加载**
 
@@ -432,7 +432,7 @@ public String getMsgId() {
 key1\u0001value1\u0002key2\u0001value2\u0002
 ```
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%209.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215549.png)
 
 该 Patch 优化掉了字符串末尾的`\u0002`，为每个消息节省了1字节传输大小。
 
@@ -450,13 +450,13 @@ TempTest.string2messageProperties      thrpt    2  1590.499          ops/s
 TempTest.string2messageProperties_old  thrpt    2   605.118          ops/s
 ```
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%2010.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215550.png)
 
 ---
 
 - string 转 map 优化
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%2011.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215551.png)
 
 优化点主要是预先计算了需要解析成字符串的长度，然后为 `StringBuilder` 定义了初始长度。
 
@@ -470,7 +470,7 @@ StringBuilder 是一个可以动态增加自身数据长度的类，其默认长
 
 - **map 转 string 优化**
 
-![Untitled](RocketMQ%204%209%201%20%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%20%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90%2062ec8f0e4b8f41298b20575b73b96861/Untitled%2012.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215552.png)
 
 可以看到右边的代码使用了 `indexOf` 和 `substring` 方法替换原来的 `split` 方法
 

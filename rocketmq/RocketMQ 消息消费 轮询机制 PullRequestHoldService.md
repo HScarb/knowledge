@@ -117,7 +117,7 @@ Broker 处理 Consumer 拉取清求的入口类
 该服务线程会从 `pullRequestTable` 本地缓存变量中取PullRequest请求，检查轮询条件“**待拉取消息的偏移量是否小于消费队列最大偏移量**”是否成立，如果条件成立则说明有新消息达到Broker端，则通过PullMessageProcessor的executeRequestWhenWakeup()方法重新尝试发起Pull消息的RPC请求
 
 - `pullRequestTable`
-    
+  
     ```java
     private ConcurrentMap<String/* topic@queueId */, ManyPullRequest/* 同一队列积累的拉取请求 */> pullRequestTable = new ConcurrentHashMap<>(1024)
     ```
@@ -334,7 +334,7 @@ public void run() {
 
 这个方法在两个地方被调用，如下图所示
 
-![Untitled](RocketMQ%20%E6%B6%88%20d3953/Untitled.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152215195.png)
 
 这个方法是重新唤醒拉取请求的核心方法。调用这个方法，提醒 PullRequestHoldService 线程有新消息到达
 

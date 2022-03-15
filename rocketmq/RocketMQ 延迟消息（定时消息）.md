@@ -1,4 +1,4 @@
-# RocketMQ 延迟消息 定时消息
+# RocketMQ 延迟消息（定时消息）源码解析
 
 # 1. 概述
 
@@ -34,7 +34,7 @@
     1. Broker 初始化时会创建一个 Topic，专门存放延迟消息。该 Topic 默认有18（延迟等级个数）个 Queue
     2. Broker 启动时，为每个延迟等级都创建一个处理线程。该线程扫描对应的延迟等级 Queue。
     3. Broker 收到消息后，查看属性中是否有延迟等级信息。如果有，则将该消息的 Topic 和 QueueId 分别替换成延迟消息对应的 Topic 和延迟等级对应的 QueueId。
-        
+       
         然后将消息真正的 Topic 和 QueueId 放到消息的 properties 属性中
         
         最后将消息保存到磁盘。

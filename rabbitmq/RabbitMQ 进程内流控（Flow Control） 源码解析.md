@@ -1,7 +1,5 @@
 # RabbitMQ 进程内流控（Flow Control） 源码解析
 
-[TRabbitMQ](https://www.notion.so/TRabbitMQ-875e94553641498890842321356bca33) 
-
 # 1. 概述
 
 ## 1.1 为什么要流控？
@@ -41,7 +39,7 @@ connection.addBlockedListener(
 
 在 RabbitMQ Broker 中使用多种进程来处理消息，进程的处理顺序如下。
 
-![*A simplified depiction of message flows*](RabbitMQ%20%E8%BF%9B%E7%A8%8B%E5%86%85%E6%B5%81%E6%8E%A7%EF%BC%88Flow%20Control%EF%BC%89%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%20329a8c77765f4d7499a96a55afd09ee2/Untitled.png)
+![*A simplified depiction of message flows*](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152216189.png)
 
 *A simplified depiction of message flows*
 
@@ -55,7 +53,7 @@ reader -> channel -> queue process -> message store
 
 某进程处于流控状态时，从 Web UI 可以观察到该进程的状态为黄色`flow`，此时该进程会暂时阻塞消息的生产。
 
-![A queue in flow state](RabbitMQ%20%E8%BF%9B%E7%A8%8B%E5%86%85%E6%B5%81%E6%8E%A7%EF%BC%88Flow%20Control%EF%BC%89%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%20329a8c77765f4d7499a96a55afd09ee2/Untitled%201.png)
+![A queue in flow state](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152216190.png)
 
 A queue in flow state
 
@@ -125,7 +123,7 @@ reader -> channel -> queue process -> message store
 
 每个RabbitMQ broker在内部都是通过actor模式实现的，不同组件之间通过消息传递(有时是本地的)进行通信。
 
-![***A simplified depiction of message flows***](RabbitMQ%20%E8%BF%9B%E7%A8%8B%E5%86%85%E6%B5%81%E6%8E%A7%EF%BC%88Flow%20Control%EF%BC%89%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%20329a8c77765f4d7499a96a55afd09ee2/Untitled%202.png)
+![***A simplified depiction of message flows***](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152216191.png)
 
 ***A simplified depiction of message flows***
 
@@ -136,7 +134,7 @@ reader -> channel -> queue process -> message store
 - rabbit_amqqueue_process：Queue 的处理进程，负责将消息存入内存、将队列索引持久化
 - rabbit_msg_store：Store 的处理进程，负责消息的持久化
 
-![*Credit based flow control with classic queues、*](RabbitMQ%20%E8%BF%9B%E7%A8%8B%E5%86%85%E6%B5%81%E6%8E%A7%EF%BC%88Flow%20Control%EF%BC%89%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%20329a8c77765f4d7499a96a55afd09ee2/Untitled%203.png)
+![*Credit based flow control with classic queues、*](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152216192.png)
 
 *Credit based flow control with classic queues、*
 
@@ -156,7 +154,7 @@ reader -> channel -> queue process -> message store
 
 例如，在下图中，Queue 进程成为性能瓶颈：
 
-![*Credit exhaustion.*](RabbitMQ%20%E8%BF%9B%E7%A8%8B%E5%86%85%E6%B5%81%E6%8E%A7%EF%BC%88Flow%20Control%EF%BC%89%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%20329a8c77765f4d7499a96a55afd09ee2/Untitled%204.png)
+![*Credit exhaustion.*](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152216193.png)
 
 *Credit exhaustion.*
 
@@ -261,7 +259,7 @@ send(From, {InitialCredit, _MoreCreditAfter}) ->
 
 来看一下进程字典中关于信用证的信息
 
-![Untitled](RabbitMQ%20%E8%BF%9B%E7%A8%8B%E5%86%85%E6%B5%81%E6%8E%A7%EF%BC%88Flow%20Control%EF%BC%89%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%20329a8c77765f4d7499a96a55afd09ee2/Untitled%205.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152216194.png)
 
 用来保存信用值信息的 key 是`{credit_from, From}`，`From`表示消息接受者的进程号（这里是`rabbit_channel`）。当这个 key 对应的值达到 **0**，拥有该进程字典的进程会被阻塞（调用`credit_flow:block/1`）方法
 

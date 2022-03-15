@@ -50,11 +50,11 @@ hash冲突时，Value以链表的方式存储，越新的消息在链表越前�
 上面已经提到 IndexFile 是类似 JDK 的 HashMap 的结构。
 
 - Key：由 `IndexService#buildKey(String topic, String key)`构建而成，具体为 `topic + "#" + messageKey` 经过hash（`IndexFile#indexKeyHashMethod(String Key)`）得到。
-    
+  
     > 注意：这里存在 Hash 冲突的可能，两个 Topic 和 Key 不同的消息可能得到相同的 Hash 值，会导致查询结果错误。社区已经提出这个错误 [ISSUE#3613](https://github.com/apache/rocketmq/issues/3613)，但目前还并未解决。
     > 
     > 
-    > ![Untitled](RocketMQ%20I%20312db/Untitled.png)
+    > ![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152214095.png)
     > 
 - Value：Hash 冲突时变成链表结构，包含：
     - 消息在 CommitLog 中的物理偏移量，用于到 CommitLog 中查询消息
@@ -74,7 +74,7 @@ RocketMQ的存储文件都遵循一种通用的数据存储格式定义实践：
 
 具体存储结构和内容如图所示：
 
-![Untitled](RocketMQ%20I%20312db/Untitled%201.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152214096.png)
 
 - **Header** 固定大小，包含一些基本信息
     - beginTimestamp：最早的消息存储时间（消息存储到 CommitLog 的时间）
@@ -116,7 +116,7 @@ RocketMQ的存储文件都遵循一种通用的数据存储格式定义实践：
     - 如果开启 `MessageStoreConfig#messageIndexSafe` 配置项，那么下次 Broker 异常恢复时，会从 checkpoint 保存的 indexMsgTimestamp 即索引文件记录的强制刷盘时间来恢复。
     - 当一个索引文件写满后创建新索引文件时调用，强制将写满的文件刷盘
     
-    ![Untitled](RocketMQ%20I%20312db/Untitled%202.png)
+    ![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152214097.png)
     
 
 ### IndexFile

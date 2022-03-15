@@ -1,7 +1,5 @@
 # RocketMQ ConsumeQueue 消费队列文件
 
-[TRocketMQ](https://www.notion.so/TRocketMQ-5e5b4901528c4f9f9d18c6ddb43583a3) 
-
 # 1. 概述
 
 ## 1.1 ConsumeQueue 是什么
@@ -102,7 +100,7 @@ Consume queue index item structure
 
 索引项的结构很简单，如上图所示。其中 Tag HashCode 用作消息过滤。
 
-![Untitled](RocketMQ%20C%20599fb/Untitled.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152217708.png)
 
 上图来自[艾瑞克的技术江湖](http://mp.weixin.qq.com/profile?src=3&timestamp=1643967524&ver=1&signature=L5ju94P7rRWmLJItwD8ajYAsvtj30i4-lUs0DufOdsYPxkXVknG7rDTxRyqDi2xoVQFLKFidOz3We*H5bb5JZw==)
 
@@ -365,7 +363,7 @@ private boolean putMessagePositionInfo(final long offset, final int size, final 
 
 该方法的调用关系如下图所示
 
-![Untitled](RocketMQ%20C%20599fb/Untitled%201.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152217709.png)
 
 1. 根据 Topic 和 QueueId 查询 ConsumeQueue
 2. 根据逻辑偏移量从 ConsumeQueue 中查出索引项
@@ -580,7 +578,7 @@ public void recover() {
 
 这种 ConsumeQueue 元素更多（每个索引的大小也更大），支持了 Batch Message，且方便扩展（留了8字节的保留字段）。
 
-![Untitled](RocketMQ%20C%20599fb/Untitled%202.png)
+![Untitled](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202203152217710.png)
 
 不出意外的话 RocketMQ 5.0 中将采用这种 ConsumeQueue 的格式。
 
