@@ -44,7 +44,7 @@
 - 消费者
     1. 当延迟消息被延迟等级处理线程重新投递之后，消费者可以消费到该消息
 
-![https://raw.githubusercontent.com/HScarb/drawio-diagrams/6e63cb8854afe97f850cf0316ac65352f72af4ba/rocketmq/feature/schedule_message_activity.drawio.svg](https://raw.githubusercontent.com/HScarb/drawio-diagrams/6e63cb8854afe97f850cf0316ac65352f72af4ba/rocketmq/feature/schedule_message_activity.drawio.svg)
+![](../assets/schedule_message_activity.drawio.png)
 
 # 3. 详细流程
 
@@ -77,7 +77,7 @@ producer.send(msg);
 
 ## 3.2 定时消息时序图
 
-![https://raw.githubusercontent.com/HScarb/drawio-diagrams/f3ab8c2d7b2444bd566870a629336276d60a61d7/rocketmq/feature/schedule_message_sequence.drawio.svg](https://raw.githubusercontent.com/HScarb/drawio-diagrams/f3ab8c2d7b2444bd566870a629336276d60a61d7/rocketmq/feature/schedule_message_sequence.drawio.svg)
+![](../assets/schedule_message_sequence.drawio.png)
 
 1. DefaultMessageStore 调用 putMessage 方法保存消息，内部调用 CommitLog 保存消息
 2. CommitLog 保存消息时检查是否是延迟消息（是否有 DelayLevel 属性）
