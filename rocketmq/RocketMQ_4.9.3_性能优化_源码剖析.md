@@ -2,11 +2,11 @@
 
 # 概述
 
-RocketMQ [4.9.1 版本](https://github.com/apache/rocketmq/releases/tag/rocketmq-all-4.9.1) 针对 Broker 做了一系列性能优化，提升了消息发送的 TPS。[前文曾就 4.9.1 版本的优化做了深入分析](./RocketMQ%204.9.1%20性能优化%20源码剖析.md)。
+RocketMQ [4.9.1 版本](https://github.com/apache/rocketmq/releases/tag/rocketmq-all-4.9.1) 针对 Broker 做了一系列性能优化，提升了消息发送的 TPS。[前文曾就 4.9.1 版本的优化做了深入分析](./RocketMQ_4.9.1_%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96_%E6%BA%90%E7%A0%81%E5%89%96%E6%9E%90.md)。
 
 在 2022 年的 2 月底，RocketMQ [4.9.3 版本](https://github.com/apache/rocketmq/releases/tag/rocketmq-all-4.9.3) 发布，其对 Broker 做了更进一步的性能优化，本次优化中也包含了生产和消费性能的提升。
 
-本文将会详解 4.9.3 版本中的性能优化点。在 4.9.3 版本中对延迟消息的优化已经在[另一篇文章](RocketMQ%20%E5%BB%B6%E8%BF%9F%E6%B6%88%E6%81%AF%EF%BC%88%E5%AE%9A%E6%97%B6%E6%B6%88%E6%81%AF%EF%BC%894.9.3%20%E7%89%88%E6%9C%AC%E4%BC%98%E5%8C%96%20%E5%BC%82%E6%AD%A5%E6%8A%95%E9%80%92%E6%94%AF%E6%8C%81.md)中详解。
+本文将会详解 4.9.3 版本中的性能优化点。在 4.9.3 版本中对延迟消息的优化已经在[另一篇文章](./RocketMQ%20%E5%BB%B6%E8%BF%9F%E6%B6%88%E6%81%AF%EF%BC%88%E5%AE%9A%E6%97%B6%E6%B6%88%E6%81%AF%EF%BC%894.9.3%20%E7%89%88%E6%9C%AC%E4%BC%98%E5%8C%96%20%E5%BC%82%E6%AD%A5%E6%8A%95%E9%80%92%E6%94%AF%E6%8C%81.md)中详解。
 
 本次和上次的性能优化主要由快手的[黄理](https://github.com/areyouok)老师提交，在 [ISSUE#3585](https://github.com/apache/rocketmq/issues/3585) 中集中记录。先来看一下本次性能优化的所有优化项
 
@@ -48,6 +48,11 @@ RocketMQ [4.9.1 版本](https://github.com/apache/rocketmq/releases/tag/rocketmq
 （`MessageExt#getBornHostNameString()` 方法在一个异常流程中被调用，优化此方法其实对性能没有什么提升）
 
 ## B. 提高编解码性能
+
+> [Part B] Improve header encode/decode performance
+> [Part B] Improve RocketMQSerializable performance with zero-copy
+
+[#3588](https://github.com/apache/rocketmq/pull/3588)
 
 （该提交未合入 4.9.3 版本，当前仍未合入）
 
