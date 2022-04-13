@@ -256,7 +256,7 @@ MappedFile.java
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204120000329.png)
 
-# K. 将 notifyMessageArriving() 的调用从 ReputMessageService 线程移到 PullRequestHoldService 线程
+## K. 将 notifyMessageArriving() 的调用从 ReputMessageService 线程移到 PullRequestHoldService 线程
 
 > move execution of notifyMessageArriving() from ReputMessageService thread to PullRequestHoldService thread
 >
@@ -265,3 +265,54 @@ MappedFile.java
 [#3659](https://github.com/apache/rocketmq/pull/3659)
 
 （该提交未合入 4.9.3 版本，当前仍未合入）
+
+这一部分其实也是为了优化 Part.J 中所说的消费速度所做的另一个改动。经过 Part.J 的修改，600 队列下的消费 TPS 能够达到 10w（生产 20w）。这个修改将消费 TPS 提升到 20w。
+
+### 寻找优化点
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204132323403.png)
+
+依然是通过查看火焰图的方法，查看到构造消费索引的方法中包含了 `notifyMessageArriving()` 这样一个方法，占用较大快的 CPU 时间。
+
+这个方法具体在 [轮询机制](./RocketMQ%20消息消费%20轮询机制%20PullRequestHoldService.md) 这篇文章中有详细解释。消息消费的轮询机制指的是在 Push 消费时，如果没有新消息不会马上返回，而是挂起一段时间再重试查询。
+
+`notifyMessageArriving()` 的作用是在收到消息时提醒消费者，有新消息来了可以消费了，这样消费者会马上解除挂起状态开始消费消息。
+
+这里的优化点就是想办法把这个方法逻辑从构建消费索引的逻辑中抽离出去。
+
+### 优化方案 1
+
+首先想到的方法是将 `notifyMessageArriving()` 用一个单独的线程异步调用。于是在 `PullRequestHoldService` 里面采用生产-消费模式，启动了一个新的工作线程，将 notify 任务扔到一个队列中，让工作线程去处理，主线程直接返回。
+
+工作线程每次从队列中 `poll` 一批任务，批量进行处理。经过这个改动，TPS 可以上升到 20w，但这带来了另一个问题——消息消费的延迟变高，达到 40+ms。
+
+延迟变高的原因是—— RocketMQ 中 `ServiceThread` 工作线程的 `wakeup()` 和 `waitForRunning()` 是弱一致的，没有加锁而是采用 CAS 的方法。
+
+```java
+public void wakeup() {
+    if (hasNotified.compareAndSet(false, true)) {
+        waitPoint.countDown(); // notify
+    }
+}
+
+protected void waitForRunning(long interval) {
+    if (hasNotified.compareAndSet(true, false)) {
+        this.onWaitEnd();
+        return;
+    }
+
+    //entry to wait
+    waitPoint.reset();
+
+    try {
+        waitPoint.await(interval, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+        log.error("Interrupted", e);
+    } finally {
+        hasNotified.set(false);
+        this.onWaitEnd();
+    }
+}
+```
+
+### 优化方案 2
