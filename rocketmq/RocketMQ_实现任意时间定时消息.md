@@ -39,11 +39,11 @@ RocketMQ 是阿里孵化的 Apache 顶级开源分布式高可用消息队列。
 | Kafka               | ×                                  | ×               | ×                                     | ×            |
 | RabbitMQ            | 一个队列只支持一个延迟时间         |                 | 低于 RocketMQ                         | ×            |
 | Pulser              | 支持跨度很大的延迟消息             | 1s              | 无法支持大规模使用                    | ×            |
-| RocketMQ            | 仅支持固定等级的延迟消息，最大 2 h | 1s              | 等同于 RocketMQ 普通消息性能          | ×            |
+| RocketMQ            | 仅支持固定等级的延迟消息，最大 2 h | 1s              | 接近于 RocketMQ 普通消息性能          | ×            |
 | Amazon SQS          | 15 分钟内                          | ？              | ？                                    | ×            |
-| 阿里云 RocketMQ     | 40 天                              | 1s~2s的延迟误差 | 等同于 RocketMQ 普通消息性能          | ×            |
+| 阿里云 RocketMQ     | 40 天                              | 1s~2s的延迟误差 | 接近于 RocketMQ 普通消息性能          | ×            |
 | 腾讯云 CMQ          | 1 小时内                           | 1s              | 单队列处于飞行状态的消息数限制为2万条 | ×            |
-| **华为云 RocketMQ** | **1 年**                           | **0.1s**        | 等同于 RocketMQ 普通消息性能          | **√**        |
+| **华为云 RocketMQ** | **1 年**                           | **0.1s**        | 接近于 RocketMQ 普通消息性能          | **√**        |
 
 可以看到，4 大主流开源消息队列对定时消息的实现都有局限性，无法达到任意时间定时。
 
@@ -75,11 +75,11 @@ RocketMQ 是阿里孵化的 Apache 顶级开源分布式高可用消息队列。
 
 下面是开源 RocketMQ 延迟消息的流程图
 
-![RocketMQ 延迟消息的流程图](../assets/schedule_message_activity.drawio.png)
+![RocketMQ 延迟消息的流程图](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204131515166.png)
 
 RocketMQ 为延迟消息创建了一个内部 Topic，下有 18 个 Queue，对应 18 个延迟等级。收到延迟消息后，不会立即投递到它本该去的 Topic 中，而是投递到延迟消息 Topic 中的对应 Queue。然后的实现十分简单粗暴：为每个 Queue 创建一个线程，循环扫描这个 Queue 里面的消息是否到达投递时间，如果到达则投递到它本该去的 Topic 中。由于每个 Queue 里面消息的延迟等级相同，那么他们的投递就是按顺序的，避免了对延迟消息重新排序。
 
-开源的延迟消息实现经过 [4.9.3 版本的优化](./RocketMQ%20%E5%BB%B6%E8%BF%9F%E6%B6%88%E6%81%AF%EF%BC%88%E5%AE%9A%E6%97%B6%E6%B6%88%E6%81%AF%EF%BC%894.9.3%20%E7%89%88%E6%9C%AC%E4%BC%98%E5%8C%96%20%E5%BC%82%E6%AD%A5%E6%8A%95%E9%80%92%E6%94%AF%E6%8C%81.md)，已经支持了异步投递，拥有了不错的性能。
+开源的延迟消息实现经过 [4.9.3 版本的优化](https://github.com/HScarb/knowledge/blob/master/rocketmq/RocketMQ%20%E5%BB%B6%E8%BF%9F%E6%B6%88%E6%81%AF%EF%BC%88%E5%AE%9A%E6%97%B6%E6%B6%88%E6%81%AF%EF%BC%894.9.3%20%E7%89%88%E6%9C%AC%E4%BC%98%E5%8C%96%20%E5%BC%82%E6%AD%A5%E6%8A%95%E9%80%92%E6%94%AF%E6%8C%81.md)，已经支持了异步投递，拥有了不错的性能。
 
 但是它仍存在一个致命的问题：不支持 18 个等级之外的延迟时间。日益增长的客户诉求促使我们探究任意时间定时消息的实现。站在开源 RocketMQ 实现的肩膀上，只要能将 18 个等级改为定时任意时间，就可以实现高性能高可靠的定时消息，因为高可靠和高性能都可以依赖 RocketMQ 本身的机制达到。
 
@@ -94,7 +94,7 @@ RocketMQ 为延迟消息创建了一个内部 Topic，下有 18 个 Queue，对�
 
 ### 使用索引文件解决定时消息顺序问题
 
-回想 RocketMQ 的[索引文件 IndexFile](./RocketMQ%20IndexFile%20%E7%B4%A2%E5%BC%95%E6%96%87%E4%BB%B6.md)，它提供了按照消息 Key 查找消息的能力。具体的做法是：它用类似 HashMap 的形式存储了每个消息 Key 下的消息的位置信息，当查询某个 Key 的消息时，可以马上定位到这个 Key 下存储的消息位置信息链表，然后通过位置信息从消息存储文件 CommitLog 中将消息全部信息查出来。
+回想 RocketMQ 的[索引文件 IndexFile](https://github.com/HScarb/knowledge/blob/master/rocketmq/RocketMQ%20IndexFile%20%E7%B4%A2%E5%BC%95%E6%96%87%E4%BB%B6.md)，它提供了按照消息 Key 查找消息的能力。具体的做法是：它用类似 HashMap 的形式存储了每个消息 Key 下的消息的位置信息，当查询某个 Key 的消息时，可以马上定位到这个 Key 下存储的消息位置信息链表，然后通过位置信息从消息存储文件 CommitLog 中将消息全部信息查出来。
 
 对于定时消息，也可以构建这样一个索引文件，用来快速查找某一时刻需要投递的消息。这样一来，投递消息时只需要借助索引文件就可以查找所有该时刻需要投递的消息，免去了排序的步骤，解决了定时消息顺序问题。
 
@@ -127,7 +127,7 @@ RocketMQ 为延迟消息创建了一个内部 Topic，下有 18 个 Queue，对�
 
 经过上面的分析，最终的存储方案就很明确了：需要新增两种存储，分别是定时消息数据和定时消息索引，如图所示。
 
-![](./../assets/scheduled_message_storage.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204131515167.png)
 
 ## 定时消息投递
 
@@ -137,7 +137,7 @@ RocketMQ 为延迟消息创建了一个内部 Topic，下有 18 个 Queue，对�
 
 容易想到使用一个单独的线程来处理投递逻辑，整个流程如下图所示，其中 Scheduled Replay 即定时消息投递线程。
 
-![](./../assets/scheduled_message_activity.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204131515168.png)
 
 *其实在最初还实现了另一种方案：将定时消息直接投递到 ConsumeQueue 中，让其保存消息在定时消息存储中的位点。这样的好处是免去了一次 CommitLog 的存储，减少磁盘占用、性能也更好。但是这种方案在主从同步时会有消息顺序不同的问题：RocketMQ 主从同步只按顺序同步 CommitLog 中的消息，然后依靠 CommitLog 生成的索引顺序就会与 CommitLog 中消息顺序一致。如果直接投递到 ConsumeQueue，从节点上想要同步 ConsumeQueue 就需要在从节点也启动一个 Scheduled Replay 投递线程，在异步投递的情况下顺序可能与主节点不一致，这样就可能造成主从切换后丢失消息。*
 
@@ -199,7 +199,7 @@ RocketMQ 为延迟消息创建了一个内部 Topic，下有 18 个 Queue，对�
 
 这里需要引入第二个线程：投递任务状态更新线程。对于异步投递，实际上投递方法执行后可以抽象成一个投递任务，在内存中异步投递。那么这里就还需要一个投递任务状态更新线程，扫描投递任务的状态，当投递任务结束时进行一些状态更新。消息投递线程和任务状态更新线程是生产-消费模式的一个实现。
 
-![](../assets/delay_msg_new_pattern.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204131515169.png)
 
 异步投递任务由一个阻塞队列来承载，这个阻塞队列的长度就代表着同时可以的进行异步投递任务的数量。我们可以人为地为阻塞队列设置一个长度上限，当达到上限时说明有过多的异步投递任务还在执行，需要流控。此时，跳出该投递任务，等待一会再开始新一个投递任务。
 
