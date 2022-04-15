@@ -47,14 +47,208 @@ RocketMQ [4.9.1 版本](https://github.com/apache/rocketmq/releases/tag/rocketmq
 
 （`MessageExt#getBornHostNameString()` 方法在一个异常流程中被调用，优化此方法其实对性能没有什么提升）
 
-## B. 提高编解码性能
+## B.1. 优化 RocketMQ 通信协议 Header 解码性能
 
 > [Part B] Improve header encode/decode performance
+
+[#3588](https://github.com/apache/rocketmq/pull/3588)
+
+（该提交未合入 4.9.3 版本，当前仍未合入）
+
+> PartB 有两个提交，其实作用不同，但是由于第二个提交依赖第一个所以只能放到一起
+
+### 寻找优化点
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204151449934.png)
+
+RocketMQ 的通信协议定义了各种指令（消息发送、拉取等等）。其中 Header 是协议头，数据是序列化后的json。json 的每个 key 字段都是固定的，不同的通讯请求字段不一样，但是其中有一个 `extField` 是完全自定义的，每个指令都不一样。所有指令当前共用了一个通用的解析方法 `RemotingCommand#decodeCommandCustomHeader`，基于反射来解析和设置消息 Header。
+
+```json
+// SendMessageRequestHeaderV2
+{  
+    "code":310,
+    "extFields":{  
+        "f":"0",
+        "g":"1482158310125",
+        "d":"4",
+        "e":"0",
+        "b":"TopicTest",
+        "c":"TBW102",
+        "a":"please_rename_unique_group_name",
+        "j":"0",
+        "k":"false",
+        "h":"0",
+        "i":"TAGS\u0001TagA\u0002WAIT\u0001true\u0002"
+    },
+    "flag":0,
+    "language":"JAVA",
+    "opaque":206,
+    "version":79
+}
+```
+
+上面是一个发送消息的请求 Header。由于各种指令对应的 Header 的 `extField` 不同，这个解析 Header 方法内部大量使用反射来设置属性，效率很低。而且这个解码方法应用广泛，在 RocketMQ 网络通信时都会用到（如发送消息、拉取消息），所以很有优化的必要。
+
+### 优化方案
+
+优化的方案是尽量减少反射的使用，将常用的指令解码方法抽象出来。
+
+这里引入了 `FastCodesHeader` 接口，只要实现这个接口，解码时就走具体的实现类而不用反射。
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204151255671.png)
+
+然后为生产消息和消费消息的协议单独实现解码方法，内部可以不用反射而是直接进行字段赋值，这样虽然繁琐但是执行速度最快。
+
+```java
+// SendMessageRequestHeaderV2.java
+@Override
+public void decode(HashMap<String, String> fields) throws RemotingCommandException {
+
+    String str = getAndCheckNotNull(fields, "a");
+    if (str != null) {
+        a = str;
+    }
+
+    str = getAndCheckNotNull(fields, "b");
+    if (str != null) {
+        b = str;
+    }
+
+    str = getAndCheckNotNull(fields, "c");
+    if (str != null) {
+        c = str;
+    }
+
+    str = getAndCheckNotNull(fields, "d");
+    if (str != null) {
+        d = Integer.parseInt(str);
+    }
+
+    // ......
+}
+
+```
+
+## B.2. 提高编解码性能
+
 > [Part B] Improve RocketMQSerializable performance with zero-copy
 
 [#3588](https://github.com/apache/rocketmq/pull/3588)
 
 （该提交未合入 4.9.3 版本，当前仍未合入）
+
+### 改动背景
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204151500752.png)
+
+RocketMQ 的协议 Header 序列化协议有俩
+
+* RemotingSerializable：内部用 fastjson 进行序列化反序列化，为当前版本使用的序列化协议。
+* RocketMQSerializable：RocketMQ 实现的序列化协议，性能对比 fastjson 没有决定性优势，当前默认没有使用。
+
+```java
+// RemotingCommand.java
+private static SerializeType serializeTypeConfigInThisServer = SerializeType.JSON;
+
+private byte[] headerEncode() {
+    this.makeCustomHeaderToNet();
+    if (SerializeType.ROCKETMQ == serializeTypeCurrentRPC) {
+        return RocketMQSerializable.rocketMQProtocolEncode(this);
+    } else {
+        return RemotingSerializable.encode(this);
+    }
+}
+```
+
+### 优化方法
+
+这个提交优化了 RocketMQSerializable 的性能，具体的方法是消除了 `RocketMQSerializable` 中多余的拷贝和对象创建，使用 Netty 的 `ByteBuf` 替换 Java 的 `ByteBuffer`，性能更高。
+
+* 对于写字符串：Netty 的 `ByteBuf` 有直接 put 字符串的方法 `writeCharSequence(CharSequence sequence, Charset charset)`，少一次内存拷贝，效率更高。
+* 对于写 Byte：Netty 的 `writeByte(int value)` 传入一个 `int`，Java 传入一个字节 `put(byte b)`。当前 CPU 都是 32 位、64 位的，对 int 处理更高效。
+
+（该改动要在 Producer 和 Consumer 设置使用 RocketMQ 序列化协议才能生效）
+
+```java
+System.setProperty(RemotingCommand.SERIALIZE_TYPE_PROPERTY, SerializeType.ROCKETMQ.name());
+```
+
+---
+
+提交说明上的 `zero-copy` 说的不是操作系统层面上的零拷贝，而是对于 `ByteBuf` 的零拷贝。
+
+在 `NettyEncoder` 中用 `fastEncodeHeader` 替换原来的 `encodeHeader` 方法，直接传入 `ByteBuf` 进行操作，不需要用 Java 的 `ByteBuffer` 中转一下，少了一次拷贝。
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204151600260.png)
+
+```java
+public void fastEncodeHeader(ByteBuf out) {
+    int bodySize = this.body != null ? this.body.length : 0;
+    int beginIndex = out.writerIndex();
+    // skip 8 bytes
+    out.writeLong(0);
+    int headerSize;
+    // 如果是 RocketMQ 序列化协议
+    if (SerializeType.ROCKETMQ == serializeTypeCurrentRPC) {
+        if (customHeader != null && !(customHeader instanceof FastCodesHeader)) {
+            this.makeCustomHeaderToNet();
+        }
+        // 调用 RocketMQ 序列化协议编码
+        headerSize = RocketMQSerializable.rocketMQProtocolEncode(this, out);
+    } else {
+        this.makeCustomHeaderToNet();
+        byte[] header = RemotingSerializable.encode(this);
+        headerSize = header.length;
+        out.writeBytes(header);
+    }
+    out.setInt(beginIndex, 4 + headerSize + bodySize);
+    out.setInt(beginIndex + 4, markProtocolType(headerSize, serializeTypeCurrentRPC));
+}
+```
+
+`rocketMQProtocolEncode` 中直接操作 `ByteBuf`，没有拷贝和新对象的创建。
+
+```java
+public static int rocketMQProtocolEncode(RemotingCommand cmd, ByteBuf out) {
+    int beginIndex = out.writerIndex();
+    // int code(~32767)
+    out.writeShort(cmd.getCode());
+    // LanguageCode language
+    out.writeByte(cmd.getLanguage().getCode());
+    // int version(~32767)
+    out.writeShort(cmd.getVersion());
+    // int opaque
+    out.writeInt(cmd.getOpaque());
+    // int flag
+    out.writeInt(cmd.getFlag());
+    // String remark
+    String remark = cmd.getRemark();
+    if (remark != null && !remark.isEmpty()) {
+        writeStr(out, false, remark);
+    } else {
+        out.writeInt(0);
+    }
+
+    int mapLenIndex = out.writerIndex();
+    out.writeInt(0);
+    if (cmd.readCustomHeader() instanceof FastCodesHeader) {
+        ((FastCodesHeader) cmd.readCustomHeader()).encode(out);
+    }
+    HashMap<String, String> map = cmd.getExtFields();
+    if (map != null && !map.isEmpty()) {
+        map.forEach((k, v) -> {
+            if (k != null && v != null) {
+                writeStr(out, true, k);
+                writeStr(out, false, v);
+            }
+        });
+    }
+    out.setInt(mapLenIndex, out.writerIndex() - mapLenIndex - 4);
+    return out.writerIndex() - beginIndex;
+}
+```
+
+
 
 ## C. 缓存 parseChannelRemoteAddr() 方法的结果
 
@@ -74,7 +268,7 @@ RocketMQ [4.9.1 版本](https://github.com/apache/rocketmq/releases/tag/rocketmq
 
 从火焰图上看出，该方法的 `toString`占用大量时间，其中主要包含了复杂的 String 拼接和处理方法。
 
-那么想要优化这个方法最直接的方式就是——缓存其结果。
+那么想要优化这个方法最直接的方式就是——缓存其结果，避免多次调用。
 
 ### 具体优化方法
 
@@ -177,7 +371,7 @@ boolean[] bitMap = VALID_CHAR_BIT_MAP;
 
 > support send batch message with different topic/queue
 
-该改动依赖 Part.B ，所以还未提交 PR
+该改动依赖 Part.B ，还未提交 PR
 
 ## H. 避免无谓的 StringBuilder 扩容
 
@@ -284,9 +478,13 @@ MappedFile.java
 
 首先想到的方法是将 `notifyMessageArriving()` 用一个单独的线程异步调用。于是在 `PullRequestHoldService` 里面采用生产-消费模式，启动了一个新的工作线程，将 notify 任务扔到一个队列中，让工作线程去处理，主线程直接返回。
 
-工作线程每次从队列中 `poll` 一批任务，批量进行处理。经过这个改动，TPS 可以上升到 20w，但这带来了另一个问题——消息消费的延迟变高，达到 40+ms。
+工作线程每次从队列中 `poll` 一批任务，批量进行处理（1000 个）。经过这个改动，TPS 可以上升到 20w，但这带来了另一个问题——消息消费的延迟变高，达到 40+ms。
 
-延迟变高的原因是—— RocketMQ 中 `ServiceThread` 工作线程的 `wakeup()` 和 `waitForRunning()` 是弱一致的，没有加锁而是采用 CAS 的方法。
+![循环等待 0.1s 直到新消息来唤醒线程](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204151125382.png)
+
+![新消息来了创建异步任务并唤醒线程](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204151126339.png)
+
+延迟变高的原因是—— RocketMQ 中 `ServiceThread` 工作线程的 `wakeup()` 和 `waitForRunning()` 是弱一致的，没有加锁而是采用 CAS 的方法，造成多线程情况下可能会等待直到超时。
 
 ```java
 public void wakeup() {
@@ -316,3 +514,31 @@ protected void waitForRunning(long interval) {
 ```
 
 ### 优化方案 2
+
+这个方案是实际提交的优化方案，方案比较复杂。主要的思想就是将原先的每条消息都通知一次转化为批通知，减少通知次数，减少通知开销以提升性能。
+
+同样用生产-消费模式，为了同时保证低延迟和高吞吐引入了 `PullNotifyQueue`。生产者和消费者仍然是操作通知任务
+
+生产者线程将消息 `put` 到队列中，消费者调用 `drain` 方法消费。
+
+`drain` 方法中根据消费 TPS 做了判断
+
+* 如果 TPS 小于阈值，则拉到一个任务马上进行处理
+* 如果 TPS 大于阈值（默认 10w），批量拉任务进行通知。一批任务只需要一次 notify（原先每个消息都会通知一次）。此时会略微增加消费时延，换来的是消费性能大幅提升。
+
+# 小结
+
+本文介绍了 RocketMQ 4.9.3 版本中的性能优化，主要优化了消息生产的速度和大量队列情况下消息消费的速度。
+
+优化的步骤是根据 CPU 耗时进行采样形成火焰图，观察火焰图中时间占比较高的方法进行针对性优化。
+
+总结一下用到的优化方法主要有
+
+* 代码硬编码属性，用代码复杂度换性能
+* 对字符串和字节数组操作时减少创建和拷贝
+* 对于要多次计算的操作，缓存其结果
+* 锁内的操作尽量移动到锁外进行，提前进行计算或者用函数式接口懒加载
+* 使用更高效的容器，如 Netty `ByteBuf`
+* 使用容器时在初始化时指定长度，避免动态扩容
+* 主流程上的分支操作，使用异步而非同步
+* 对于磁盘 I/O，MMap 和 FileChannel 的选择，需要实际压测
