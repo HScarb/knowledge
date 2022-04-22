@@ -367,6 +367,12 @@ boolean[] bitMap = VALID_CHAR_BIT_MAP;
 
 将静态变量位图复制到局部变量中，这样做的用意是将堆中的变量复制到栈上（因为局部变量都位于栈），提高下面循环中访问该位图的速度。
 
+> * 栈上存储的数据，很大机会会被虚拟机分配至物理机器的高速寄存器中存储。因而读写效率比从堆内存中读写高很多。
+> * 栈上分配的数据，释放时只需要通过移动栈顶指针，就可以随着栈帧出栈而自动销毁。而堆内存的释放由垃圾回收器负责完成，这一过程中整理和回收内存都需要消耗更多的时间。
+> * 栈操作可以被 JIT 优化，得到 CPU 指令的加速
+> * 栈没有碎片，寻址间距短，可以被 CPU 预测行为
+> * 栈无需释放内存和进行随机寻址
+
 ## G. 支持发送 batch 消息时支持不同的 Topic/Queue
 
 > support send batch message with different topic/queue
@@ -541,4 +547,4 @@ protected void waitForRunning(long interval) {
 * 使用更高效的容器，如 Netty `ByteBuf`
 * 使用容器时在初始化时指定长度，避免动态扩容
 * 主流程上的分支操作，使用异步而非同步
-* 对于磁盘 I/O，MMap 和 FileChannel 的选择，需要实际压测
+* 对于磁盘 I/O，MMap 和 FileChannel 的选择，需要实际压测，大部分情况下 MMap 速度更快且更稳定；每次写入较大数据长度时（1k 左右） FileChannel 速度才更快。具体压测结果请看 [java-io-benchmark](https://github.com/HScarb/java-io-benchmark)
