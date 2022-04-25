@@ -238,15 +238,15 @@ Connecton 进程从 socket 上接收生产者发送的消息后投递到 Channel
 ![](../assets/rabbitmq_mirror_queue_struct.drawio.png)
 
 
-镜像队列同样由这两部分组成，amqqueue_process 仍旧进行协议相关的消息处理，backing_queue 则是由 master 节点和 slave 节点组成的一个特殊的 backing_queue。Leader 节点和 Follower 节点都由一组进程组成，一个负责消息广播的 GM，一个负责对 GM 收到的广播消息进行回调处理。
+镜像队列同样由这两部分组成，amqqueue_process 仍旧进行协议相关的消息处理，backing_queue 则是由 Leader 节点和 Follower 节点组成的一个特殊的 backing_queue。Leader 节点和 Follower 节点都由一组进程组成，一个负责消息广播的 GM，一个负责对 GM 收到的广播消息进行回调处理。
 
-在 Leader 节点上回调处理是 coordinator，在slave节点上则是 mirror_queue_slave。mirror_queue_slave 中包含了普通的 backing_queue 进行消息的存储，Leader 节点中 backing_queue 包含在 mirror_queue_master 中由 amqqueue_process 进行调用。
+在 Leader 节点上回调处理是 coordinator，在 Follower 节点上则是 mirror_queue_slave。mirror_queue_slave 中包含了普通的 backing_queue 进行消息的存储，Leader 节点中 backing_queue 包含在 mirror_queue_master 中由 amqqueue_process 进行调用。
 
 ### 4.2.3 GM(Guaranteed Multicast)
 
 GM 模块实现的是一种可靠的组播通信协议，该协议能够保证组播消息的原子性，即保证组中活着的节点要么都收到消息要么都收不到。
 
-它的实现大致为：将所有的节点形成一个**循环链表**，每个节点都会监控位于自己左右两边的节点，当有节点新增时，相邻的节点保证当前广播的消息会复制到新的节点上 : 当有节点失效时，相邻的节点会接管以保证本次广播的消息会复制到所有的节点。在 Leader 和 Follower 上的这些 GM 形成一个组 (gm_group) ，这个组的信息会记录在 Mnesia 中。不同的镜像队列形成不同的组。操作命令从 Leader 对应的 GM 发出后，顺着链表传送到所有的节点。由于所有节点组成了一个循环链表， Leader 对应的 GM 最终会收到自己发送的操作命令，这个时候 Leader 就知道该操作命令都同步到了所有的 slave 上。
+它的实现大致为：将所有的节点形成一个**循环链表**，每个节点都会监控位于自己左右两边的节点，当有节点新增时，相邻的节点保证当前广播的消息会复制到新的节点上 : 当有节点失效时，相邻的节点会接管以保证本次广播的消息会复制到所有的节点。在 Leader 和 Follower 上的这些 GM 形成一个组 (gm_group) ，这个组的信息会记录在 Mnesia 中。不同的镜像队列形成不同的组。操作命令从 Leader 对应的 GM 发出后，顺着链表传送到所有的节点。由于所有节点组成了一个循环链表， Leader 对应的 GM 最终会收到自己发送的操作命令，这个时候 Leader 就知道该操作命令都同步到了所有的 Follower 上。
 
 ### 4.2.4 消息的广播
 
