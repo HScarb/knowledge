@@ -33,6 +33,15 @@ JMH 是 Java Microbenchmark Harness 的缩写，官方介绍如下：
 
 应用 JMH 注解的代码在编译之后会被编译成多个执行类以进行基准测试结果输出。
 
+![](../assets/jmh_process.drawio.png)
+
+JMH 按照如上所示的流程进行基准测试。
+* Fork 为一个新的进程，如果设置用多个进程执行，则各个线程串行执行。
+* 每个线程中先执行预热（Warmup），然后再执行测试（Measurement）。在预热和测试执行过程中，每一轮测试称为一个迭代（Iteration），一个迭代也是测试数据统计的最小单元。在 `@Warmup` 和 `@Measurement` 注解中可以指定执行的迭代次数和每次迭代的执行时常。
+* 每个迭代中会根据基准测试的模式（`@BenchmarkMode`）来调用（Invoke）测试方法，可能一次也可能多次，并计算该测试模式所关注的指标。
+* 可以看到在每次测试前后、每次迭代前后、甚至每次调用方法前后都可以用 `@Setup` 和 `@TearDown` 注解来设置启动和停止的方法。
+
+
 # 快速开始
 
 ## 安装插件
@@ -205,11 +214,16 @@ MyBenchmark.testLinkedList  thrpt    5   19126.940 ±  37132.831  ops/ms
 
 # 注释详解
 
+这个图片可以帮助快速查阅 JMH 各个注解的含义和用法。
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202204270021841.png)
 
+具体的解析可以看 [关键注解](https://juejin.cn/post/7031008727645831176#heading-1)
 
 # 高级用法
 
 详见 [基准测试神器JMH —— 详解36个官方例子](https://juejin.cn/post/6844904147674726407)
+
+# 将结果图形化
 
 # 参考资料
 
@@ -219,3 +233,5 @@ MyBenchmark.testLinkedList  thrpt    5   19126.940 ±  37132.831  ops/ms
 * [基准测试神器JMH —— 详解36个官方例子](https://juejin.cn/post/6844904147674726407)
 * [性能调优必备利器之 JMH](https://www.cnblogs.com/wupeixuan/p/13091381.html)
 * [JMH - Java Microbenchmark Harness](https://jenkov.com/tutorials/java-performance/jmh.html)
+* [JMH Cheatsheet](http://leogomes.github.io/assets/JMH_cheatsheet.pdf)
+* [Understanding Java Microbenchmark Harness or JMH Tool](https://medium.com/javarevisited/understanding-java-microbenchmark-harness-or-jmh-tool-5b9b90ccbe8d)
