@@ -227,6 +227,7 @@ MyBenchmark.testLinkedList  thrpt    5   19126.940 ±  37132.831  ops/ms
 
 # 参考资料
 
+* [JAVA 拾遗 — JMH 与 8 个测试陷阱](https://www.cnkirito.moe/java-jmh)
 * [JMH - Java 微基准测试工具（自助性能测试）@Benchmark](https://blog.csdn.net/yangbindxj/article/details/122899328)
 * [顶级Java才懂的，基准测试JMH！](https://juejin.cn/post/7031008727645831176)
 * [JUC学习笔记 - 08JMH入门](https://juejin.cn/post/7069967034636845092)
