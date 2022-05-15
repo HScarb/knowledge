@@ -1026,3 +1026,4 @@ public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
 # 参考资料
 
 * [官方文档——架构设计](https://github.com/apache/rocketmq/blob/master/docs/cn/architecture.md)
+* [深入剖析RocketMQ源码-NameServer](https://www.cnblogs.com/vivotech/p/15323042.html)

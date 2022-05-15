@@ -28,6 +28,5 @@ RocketMQ 是一个低延迟、拥有金融级别稳定性的高性能消息队�
 * [Kafka 和 RocketMQ 底层存储之那些你不知道的事](https://xie.infoq.cn/article/24b51de341d66de6d1e737d65)
 * [RocketMQ高性能之底层存储设计](https://mp.weixin.qq.com/s/yd1oQefnvrG1LLIoes8QAg)
 * [深入剖析 RocketMQ 源码 - 消息存储模块](https://www.cnblogs.com/vivotech/p/15527500.html)
-* [消息队列高手课——Kafka如何实现高性能IO？](https://time.geekbang.org/column/article/126493)
 * [RocketMQ存储实现分析](http://www.daleizhou.tech/posts/rocketmq-store-commitlog.html)
 * [谈谈MQ | 与Page Cache的爱恨情仇](https://zhangjunjia.github.io/2020/10/09/mq-page-cache/)
