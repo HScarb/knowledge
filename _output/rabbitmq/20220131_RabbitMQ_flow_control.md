@@ -1,5 +1,7 @@
 # RabbitMQ 进程内流控（Flow Control） 源码解析
 
+[TOC]
+
 # 1. 概述
 
 ## 1.1 为什么要流控？
@@ -408,3 +410,9 @@ get(credit_blocked) => [C].
 - [Quorum Queues and Flow Control - The Concepts](https://blog.rabbitmq.com/posts/2020/05/quorum-queues-and-flow-control-the-concepts/)
 - RabbitMQ实战指南
 - [RabbitMQ流量控制机制分析](https://wenku.baidu.com/view/f18969d684254b35eefd348b)
+
+---
+
+欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)

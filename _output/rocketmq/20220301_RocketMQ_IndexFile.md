@@ -1,5 +1,7 @@
 # RocketMQ IndexFile 索引文件
 
+[TOC]
+
 # 1. 概述
 
 ## 1.1 索引文件是什么
@@ -601,3 +603,9 @@ public void selectPhyOffset(final List<Long> phyOffsets, final String key, final
 
 - [RocketMQ 文档：设计](https://github.com/apache/rocketmq/blob/master/docs/cn/design.md)
 - [RocketMQ存储篇——IndexFile和IndexService](https://blog.csdn.net/meilong_whpu/article/details/76921583)
+
+---
+
+欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)

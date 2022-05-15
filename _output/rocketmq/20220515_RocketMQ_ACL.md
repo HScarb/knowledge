@@ -1,5 +1,7 @@
 # RocketMQ ACL 权限控制 详解 & 源码剖析
 
+[TOC]
+
 # 1. 背景
 
 很多网站、软件、应用都有自己的权限控制系统。一般来说用户会有自己的角色（用户组），每个角色有相应的权限集，只有拥有某种权限才能进行某些操作。随着消息队列的使用场景越来越广泛，消息队列的权限控制需求也也越来越迫切。
@@ -44,7 +46,7 @@ RocketMQ 的权限控制由客户端和 Broker 端共同完成。
 
 下面是 RocketMQ 进行权限控制的流程
 
-![](../assets/rocketmq_acl_process.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_acl_process.drawio.png)
 
 ### 2.2.1 初始化
 
@@ -241,7 +243,7 @@ public class ACLConsumerTest {
 
 介绍 Broker 这边的 ACL 逻辑前，看一下 Broker ACL 相关的类。
 
-![](../assets/rocketmq_acl_class.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_acl_class.drawio.png)
 
 其中红色线为初始化的方法调用链。
 
@@ -255,7 +257,7 @@ Broker 启动时会由 `BrokerController` 初始化 ACL 模块，加载所有的
 
 ## 3.3 Broker 权限验证
 
-![](../assets/rocketmq_acl_class.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_acl_class.drawio.png)
 
 权限验证的逻辑在 `PlainAccessValidator` 的 `validate` 方法中，它会调用 `PlainPermissionManager` 的 `validate` 方法，传入的参数是客户端发送请求时指定的用户信息。下面是权限验证的步骤
 
@@ -442,7 +444,7 @@ public PlainPermissionManager() {
 
 ### 4.2.1 PlainPermissonManager 的字段含义
 
-![](../assets/rocketmq_acl_class.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_acl_class.drawio.png)
 
 其中红色线为初始化的方法调用链。下面看一下 `PlainPermissonManager` 中字段的含义，由于支持了从多文件加载权限配置，所以这些配置大多为 Map 类型，Key 是文件路径，Value 是文件中包含的权限配置。
 
@@ -793,3 +795,9 @@ void checkPerm(PlainAccessResource needCheckedAccess, PlainAccessResource ownedA
 * [源码分析RocketMQ ACL实现机制](https://blog.csdn.net/prestigeding/article/details/94975796)
 * [RocketMQ 源码分析之 ACL](https://blog.csdn.net/qq_25145759/article/details/117519379)
 * [RocketMQ ACL 权限控制](https://kunzhao.org/docs/rocketmq/rocketmq-acl/)
+
+---
+
+欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)

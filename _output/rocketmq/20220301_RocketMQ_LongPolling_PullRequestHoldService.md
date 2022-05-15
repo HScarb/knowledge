@@ -1,5 +1,7 @@
 # RocketMQ 消息消费 轮询机制 PullRequestHoldService
 
+[TOC]
+
 # 1. 概述
 
 先来看看 RocketMQ 消费过程中的轮询机制是啥。首先需要补充一点消费相关的前置知识。
@@ -461,3 +463,9 @@ public class NotifyMessageArrivingListener implements MessageArrivingListener {
 
 - [源码分析RocketMQ消息PULL-长轮询模式](https://blog.csdn.net/prestigeding/article/details/79357818)
 - [消息中间件—RocketMQ 消息消费（二）（push 模式实现）](https://www.6aiq.com/article/1563130068940)
+
+---
+
+欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)

@@ -1,5 +1,7 @@
 # RabbitMQ Federation 插件使用
 
+[TOC]
+
 ## 概述
 
 RabbitMQ Federation 插件可以将消息从一个 Exchange 复制到另一个 Exchange，或从一个 Queue 分发到另一个 Queue。
@@ -85,3 +87,9 @@ Queue Federation 的效果是消息的负载均衡，它只会将消息发往有
 * [Federation Plugin](https://www.rabbitmq.com/federation.html)
 * [FAQ: What is the RabbitMQ Federation plugin](https://www.cloudamqp.com/blog/faq-what-is-the-rabbitmq-federation-plugin.html)
 * [Setup RabbitMQ Exchange Federation](https://jee-appy.blogspot.com/2018/08/setup-rabbitmq-exchange-federation.html)
+
+---
+
+欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)

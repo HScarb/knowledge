@@ -1,5 +1,7 @@
 # RocketMQ 延迟消息（定时消息）源码解析
 
+[TOC]
+
 # 1. 概述
 
 ## 1.1 定时消息概念
@@ -44,7 +46,7 @@
 - 消费者
     1. 当延迟消息被延迟等级处理线程重新投递之后，消费者可以消费到该消息
 
-![](../assets/schedule_message_activity.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/schedule_message_activity.drawio.png)
 
 # 3. 详细流程
 
@@ -77,7 +79,7 @@ producer.send(msg);
 
 ## 3.2 定时消息时序图
 
-![](../assets/schedule_message_sequence.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/schedule_message_sequence.drawio.png)
 
 1. DefaultMessageStore 调用 putMessage 方法保存消息，内部调用 CommitLog 保存消息
 2. CommitLog 保存消息时检查是否是延迟消息（是否有 DelayLevel 属性）
@@ -355,3 +357,9 @@ public void executeOnTimeup() {
 社区有一个PR，可以实现在 CommitLog 保存时间之内任意时间的延迟消息实现。其实现了一个新的定时消息 Index 文件，用来根据投递时间查询该时间需要投递的消息，解决了定时消息排序的问题。
 
 [PR#2290](https://github.com/apache/rocketmq/pull/2290)
+
+---
+
+欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)

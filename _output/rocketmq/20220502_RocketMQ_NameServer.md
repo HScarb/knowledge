@@ -1,5 +1,7 @@
 # RocketMQ NameServer 详解 源码剖析
 
+[TOC]
+
 # 1. 概述
 
 ## 1.1 NameServer 是什么
@@ -13,7 +15,7 @@ NameServer 是一个简单的 Topic 路由注册中心，类似 Kafka、Dubbo �
 
 NameServer 通常以集群的方式部署，各实例间相互不进行信息通讯。RocketMQ 典型的双主双从部署方式如下图所示：
 
-![](../assets/rocketmq_struct.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_struct.drawio.png)
 
 Broker 定期向 NameServer 发送心跳，上报路由信息。客户端（生产者、消费者）定期请求 NameServer 获取最新的路由信息。
 
@@ -40,7 +42,7 @@ NameServer 的代码并不多，如下所示
 
 它主要有 3 个模块：Topic 路由管理模块（`RouteInfoManager`）、通信模块（`DefaultRequestProcessor`、`ClusterTestRequestProcessor`）、KV 数据存储模块（`KVConfigManager`)。
 
-![](../assets/rocketmq_nameserver_module.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_nameserver_module.drawio.png)
 
 RouteInfoManager 中存储 5 个 `HashMap`，这就是 NameServer 中主要存储的数据。它们仅存在于内存中，并不会持久化。其中数据内容如下：
 
@@ -57,7 +59,7 @@ KVConfigManager 内部保存了一个二级 `HashMap`： `configTable`，并且�
 
 ## 2.2 交互
 
-![](../assets/rocketmq_nameserver_interactive.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_nameserver_interactive.drawio.png)
 
 上图为 NameServer 与其他组件交互的示意图。可以看到 Producer、Consumer、Broker 均每 30s 向 NameServer 发起一次请求，NameServer 中也有定时器，定期扫描和更新内部数据。
 
@@ -70,7 +72,7 @@ KVConfigManager 内部保存了一个二级 `HashMap`： `configTable`，并且�
 
 ## 3.1 NameServer 启动
 
-![](../assets/rocketmq_nameserver_startup.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_nameserver_startup.drawio.png)
 
 上图为 NameServer 启动流程的示意图。
 
@@ -93,7 +95,7 @@ HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
 HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
 ```
 
-![](../assets/rocketmq_nameserver_info_classes.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_nameserver_info_classes.drawio.png)
 
 ### 3.2.2 客户端保存的路由信息
 
@@ -1027,3 +1029,9 @@ public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
 
 * [官方文档——架构设计](https://github.com/apache/rocketmq/blob/master/docs/cn/architecture.md)
 * [深入剖析RocketMQ源码-NameServer](https://www.cnblogs.com/vivotech/p/15323042.html)
+
+---
+
+欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)
