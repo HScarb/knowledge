@@ -127,7 +127,7 @@ public class TopicRouteData extends RemotingSerializable {
 
 ### 3.3.1 Broker 上报心跳和路由信息
 
-Broker 发送心跳包的定时任务在 `BrokerController#start()` 方法中启动，每隔 30s 调用 `registerBrokerAll` 发送一次心跳包，并将自身的 Topic 队列路由信息发送给 NameServer。
+Broker 发送心跳包的定时任务在 `BrokerController#start()` 方法中启动，每隔 30s 调用 `registerBrokerAll` 发送一次心跳包，并将自身的 Topic 队列路由信息发送给 NameServer。主节点和从节点都会发送心跳和路由信息。
 Broker 会遍历 NameServer 列表，向每个 NameServer 发送心跳包。
 
 心跳包的请求头中包含
@@ -1034,4 +1034,4 @@ public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
 
 欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
 
-![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)

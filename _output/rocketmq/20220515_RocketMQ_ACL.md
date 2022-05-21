@@ -800,4 +800,4 @@ void checkPerm(PlainAccessResource needCheckedAccess, PlainAccessResource ownedA
 
 欢迎关注公众号【消息中间件】，更新消息中间件的源码解析和最新动态！
 
-![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205152338160.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)
