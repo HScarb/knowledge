@@ -56,9 +56,30 @@ try {
 }
 ```
 
+### 与 synchronized 的选择
+
+* 性能：
+  * Java 5.0 中，ReentrantLock 比内置锁提供更好的竞争性能，有更好的吞吐量。
+  * Java 6 使用了改进后的算法来管理内置锁，与在 ReentrantLock 中使用的算法类似。二者的吞吐量非常接近，ReentrantLock 略有胜出。
+* ReentrantLock 提供的其他功能
+  * 定时的锁等待
+  * 可中断的锁等待
+  * 公平性
+  * 实现非块结构的加锁
+* ReentrantLock 的危险性
+  * 必须在 finally 块中调用 `unlock()`
+* 建议
+  * 当需要这些高级功能才应该使用 ReentrantLock，否则优先使用 synchronized
+  * 未来更可能会提升 synchronized 的性能而不是 ReentrantLock。因为 synchronized 是 JVM 的内置属性，能执行一些优化
+
 ### 可重入
 
-如果某个线程试图获得一个已经由它自己持有地锁，这个请求会成功。“重入”意味着获取锁的操作粒度时“线程”，而不是“调用”。
+如果某个**线程**试图获得一个已经由它自己持有地锁，这个请求会**成功**。“重入”意味着获取锁的操作粒度时“线程”，而不是“调用”。
+
+### 公平锁
+
+* 公平锁：线程按照他们发出请求的顺序来获得锁，FIFO。
+* 非公平锁：不提供公平保证，有可能等待时间短的线程反而先被唤醒，获得锁。
 
 ## 用管程实现异步转同步
 
@@ -125,6 +146,12 @@ private void doReceived(Response res) {
 
 对比 Lock：可以允许多个线程访问一个临界区
 
+### 应用场景
+
+可用于做流量控制，特别是公共资源优先的应用场景，如数据库连接（池）。
+
+如需要读取几万个文件存储到数据库中，可以启动几十个线程并发读取，但数据库连接数有限，只有 10 个。此时必须控制只有 10 个线程可以同时获取数据库连接。
+
 ### 信号量模型
 
 ![信号量模型图](https://static001.geekbang.org/resource/image/6d/5c/6dfeeb9180ff3e038478f2a7dccc9b5c.png)
@@ -184,7 +211,7 @@ static void addOne() {
 
 ### 实现限流器
 
-限流：不允许多余 N 个线程同时进入临界区
+限流：不允许多于 N 个线程同时进入临界区
 
 ## ReadWriteLock
 
@@ -193,3 +220,146 @@ static void addOne() {
 1. 允许多个线程同时读共享变量；
 2. 只允许一个线程写共享变量；
 3. 如果一个写线程正在执行写操作，此时禁止读线程读共享变量。
+
+### ReentrantReadWriteLock 特性
+
+* 可重入
+* 读线程插队？
+  * 非公平（默认）：
+  * 公平：等待时间最长的线程将优先获得锁。如果这个锁由读线程持有，而另一个线程请求写入锁，那么其他线程都不能获得读取锁，直到写线程使用完并且释放了写入锁。
+* 降级：一个线程持有写入锁，在不释放该锁的情况下获得读取锁。支持
+* 升级：一个线程持有读取锁，在不释放该锁的情况下获得写入锁。不支持
+
+### 其他方法
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205311455656.png)
+
+## StampedLock
+
+JDK 1.8 加入，在读写锁的基础上进一步优化读性能。
+
+`StampedLock`支持三种模式，分别是：**写锁**、**悲观读锁**和**乐观读**，相比 `ReadWriteLock` 多了**乐观读**。
+
+写锁、悲观读锁的语义和`ReadWriteLock`的写锁、读锁的语义非常类似，允许多个线程同时获取悲观读锁，但是只允许一个线程获取写锁，写锁和悲观读锁是互斥的。不同的是：`StampedLock`里的写锁和悲观读锁加锁成功之后，都会返回一个`stamp`；然后解锁的时候，需要传入这个`stamp`。
+
+```java
+final StampedLock sl = new StampedLock();
+// 获取/释放悲观读锁示意代码
+long stamp = sl.readLock();
+try {
+  //省略业务相关代码
+} finally {
+  sl.unlockRead(stamp);
+}
+// 获取/释放写锁示意代码
+long stamp = sl.writeLock();
+try {
+  //省略业务相关代码
+} finally {
+  sl.unlockWrite(stamp);
+}
+```
+
+### 乐观读
+
+所谓的乐观读模式，也就是若读的操作很多，写的操作很少的情况下，你可以乐观地认为，写入与读取同时发生几率很少，因此不悲观地使用完全的读取锁定，程序可以查看读取资料之后，是否遭到写入执行的变更，再采取后续的措施(重新读取变更信息，或者抛出异常) ，这一个小小改进，可大幅度提高程序的吞吐量。
+
+**乐观读这个操作是无锁的**，所以相比较`ReadWriteLock`的读锁，**乐观读的性能更好一些**。`StampedLock`提供的**乐观读，是允许一个线程获取写锁，也就是说不是所有的写操作都被阻塞**。
+
+```java
+long stamp = lock.tryOptimisticRead();
+// 判断执行读取操作期间，是否存在写操作，如果存在，则 validate 返回 false
+if (!lock.validate(stamp)) {
+    // 升级为悲观读锁
+    stamp = lock.readLock();
+    try {
+        // 读
+    } finally {
+        lock.unlockRead(stamp);
+    }
+}
+```
+
+### 与 ReadWriteLock 对比
+
+#### 功能
+
+对于读多写少的场景`StampedLock`性能很好，简单的应用场景基本上可以替代`ReadWriteLock`，但是**StampedLock的功能仅仅是ReadWriteLock的子集**。
+
+* `StampedLock` 不可重入
+* 不支持条件变量
+
+#### 性能
+
+ReadWritLock相比，在一个线程情况下，是读速度其4倍左右，写是1倍。
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205311511929.png)
+
+下图是六个线程情况下，读性能是其几十倍，写性能也是近10倍左右：
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205311510192.png)
+
+### 使用模板
+
+StampedLock读模板：
+
+```java
+final StampedLock sl = new StampedLock();
+// 乐观读
+long stamp = sl.tryOptimisticRead();
+// 读入方法局部变量
+......
+// 校验stamp
+if (!sl.validate(stamp)){
+  // 升级为悲观读锁
+  stamp = sl.readLock();
+  try {
+    // 读入方法局部变量
+    .....
+  } finally {
+    //释放悲观读锁
+    sl.unlockRead(stamp);
+  }
+}
+//使用方法局部变量执行业务操作
+......
+```
+
+StampedLock写模板：
+
+```java
+long stamp = sl.writeLock();
+try {
+  // 写共享变量
+  **......
+} finally {
+  sl.unlockWrite(stamp);
+}
+```
+
+## CountDownLatch
+
+JDK 1.5 之后提供，允许一个或多个线程等待其他线程完成操作。类似于对多个线程的 `join()`，并且比 `join()` 的功能更多，更灵活。
+
+### 应用场景
+
+* 等待多个线程执行完成
+* 等待位点执行完成
+
+## CyclicBarrier
+
+一组线程达到一个屏障（同步点）时被阻塞，直到最后一个线程到达时才会打开屏障，所有被拦截的线程继续运行。Cyclic，表示可以循环利用。计数器减到 0 后会自动重置成初始值。
+
+### 应用场景
+
+多线程计算数据，最后合并结算结果。
+
+### 和 CountDownLatch 的区别
+
+* CountDownLatch 计数器只能用一次，CyclicBarrier 计数器可以用 `reset()` 方法重置，可以处理更复杂的业务场景。
+* CyclicBarrier 提供其他有用的方法。
+  * `getNumberWaiting()` 获取阻塞线程熟练
+  * `isBroken()` 阻塞的线程是否被中断
+
+## 并发容器
+
