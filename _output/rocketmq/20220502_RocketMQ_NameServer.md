@@ -63,10 +63,16 @@ KVConfigManager 内部保存了一个二级 `HashMap`： `configTable`，并且�
 
 上图为 NameServer 与其他组件交互的示意图。可以看到 Producer、Consumer、Broker 均每 30s 向 NameServer 发起一次请求，NameServer 中也有定时器，定期扫描和更新内部数据。
 
-1. Broker 每隔 30s 向 NameServer 集群的每台机器都发送心跳包，包含自身 Topic 队列的路由信息。
-2. NameServer 收到 Broker 心跳信息会记录时间戳（到 brokerAddrTable），用作判断 Broker 是否掉线。
-3. 生产者和消费者每隔 30s 向 NameServer 发送请求，获取它们要生产/消费的 Topic 的路由信息。
-4. NameServer 中启动一个定时任务线程，每隔 10s 扫描 brokerAddrTable 中所有的 Broker 上次发送心跳时间，如果超过 120s 没有收到心跳，则从存活 Broker 表中移除该 Broker。
+* Broker
+  * 每隔 30s 向 NameServer 集群的每台机器都发送心跳包，包含自身 Topic 队列的路由信息。
+  * 当有 Topic 改动（创建/更新），Broker 会立即发送 Topic 增量信息到 NameServer，同时触发 NameServer 的数据版本号发生变更。
+* NameServer
+  * 将路由信息保存在内存中。它只被其他模块调用（被 Broker 上传，被客户端拉取），不会主动调用其他模块。
+  * 启动一个定时任务线程，每隔 10s 扫描 brokerAddrTable 中所有的 Broker 上次发送心跳时间，如果超过 120s 没有收到心跳，则从存活 Broker 表中移除该 Broker。
+* Client
+  * 生产者第一次发送消息时，向 NameServer 拉取该 Topic 的路由信息。
+  * 消费者启动过程中会向 NameServer 请求 Topic 路由信息。
+  * 每隔 30s 向 NameServer 发送请求，获取它们要生产/消费的 Topic 的路由信息。
 
 # 3. 详细设计
 
@@ -1029,6 +1035,7 @@ public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
 
 * [官方文档——架构设计](https://github.com/apache/rocketmq/blob/master/docs/cn/architecture.md)
 * [深入剖析RocketMQ源码-NameServer](https://www.cnblogs.com/vivotech/p/15323042.html)
+* [Namesrv nearby route](https://github.com/apache/rocketmq/issues/4382)
 
 ---
 
