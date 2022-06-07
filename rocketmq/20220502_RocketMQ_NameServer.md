@@ -65,7 +65,7 @@ KVConfigManager 内部保存了一个二级 `HashMap`： `configTable`，并且�
 
 * Broker
   * 每隔 30s 向 NameServer 集群的每台机器都发送心跳包，包含自身 Topic 队列的路由信息。
-  * 当有 Topic 改动（创建/更新），Broker 会立即发送 Topic 增量信息到 NameServer，同时触发 NameServer 的数据版本号发生变更。
+  * 当有 Topic 改动（创建/更新），Broker 会立即发送 Topic 增量信息到 NameServer，同时触发 NameServer 的数据版本号发生变更（+1）。
 * NameServer
   * 将路由信息保存在内存中。它只被其他模块调用（被 Broker 上传，被客户端拉取），不会主动调用其他模块。
   * 启动一个定时任务线程，每隔 10s 扫描 brokerAddrTable 中所有的 Broker 上次发送心跳时间，如果超过 120s 没有收到心跳，则从存活 Broker 表中移除该 Broker。
@@ -91,13 +91,18 @@ KVConfigManager 内部保存了一个二级 `HashMap`： `configTable`，并且�
 
 ### 3.2.1 NameServer 端保存的路由信息
 
-NameServer 中的路由信息主要指的是前面说到的 5 个 `HashMap`。它们只会保存在内存中，不会被持久化。下面看一下它们的具体结构。
+NameServer 中的路由信息主要指的是前面说到的 `RouteInfoManager` 中的 5 个 `HashMap`。它们只会保存在内存中，不会被持久化。下面看一下它们的具体结构。
 
 ```java
-HashMap<String/* topic */, Map<String /* brokerName */ , QueueData>> topicQueueTable;
+// Topic 中 Queue 的路由表，消息发送时根据路由表进行 Topic 内的负载均衡
+HashMap<String/* topic */, List<QueueData>> topicQueueTable;
+// Broker 基础信息表，包含 brokerName、所属集群名称、主备 Broker 地址
 HashMap<String/* brokerName */, BrokerData> brokerAddrTable;
+// Broker 集群信息，存储集群中所有 Broker 的名称
 HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
+// Broker 状态信息，NameServer 每次收到心跳包时会替换该信息
 HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
+// Broker 上的 FilterServer 列表，用于类模式的消息过滤。（在 4.4 之后的版本被废弃）
 HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
 ```
 
@@ -105,15 +110,24 @@ HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTab
 
 ### 3.2.2 客户端保存的路由信息
 
-客户端中的路由信息保存在这个表中，也仅保存在内存，不会持久化。
+客户端中的路由信息保存在 `MQClientInstance` 中，也仅保存在内存，不会持久化。
+
+`MQClientInstance` 是用来与 NameServer、Broker 交互的客户端实例，同时缓存了路由信息。
 
 ```java
+/**
+ * Topic 路由信息
+ * 从NameServer更新
+ */
 ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<String, TopicRouteData>();
 ```
 
 其中包含该 Topic 的队列列表、Broker 信息列表等数据。
 
 ```java
+/**
+ * Topic 路由信息，NameServer 返回给客户端
+ */
 public class TopicRouteData extends RemotingSerializable {
     // 顺序消息的配置，来自 KvConfig
     private String orderTopicConf;
@@ -133,18 +147,25 @@ public class TopicRouteData extends RemotingSerializable {
 
 ### 3.3.1 Broker 上报心跳和路由信息
 
-Broker 发送心跳包的定时任务在 `BrokerController#start()` 方法中启动，每隔 30s 调用 `registerBrokerAll` 发送一次心跳包，并将自身的 Topic 队列路由信息发送给 NameServer。主节点和从节点都会发送心跳和路由信息。
+Broker 发送心跳包的定时任务在 `BrokerController#start()` 方法中启动，每隔 30s 调用 `registerBrokerAll` 方法发送一次心跳包（`REGISTER_BROKER` 请求），并将自身的 Topic 队列路由信息发送给 NameServer。主节点和从节点都会发送心跳和路由信息。
 Broker 会遍历 NameServer 列表，向每个 NameServer 发送心跳包。
+
+另外一个触发 Broker 上报 Topic 配置的操作是修改 Broker 的 Topic 配置（创建/更新），由 `TopicConfigManager` 触发上报。
+
+---
 
 心跳包的请求头中包含
 
 * Broker 地址
-* BrokerId，0 表示主节点，>0 表示从节点
+* BrokerId，0 表示主节点，大于 0 表示从节点
 * Broker 名称
 * 集群名称
 * 主节点地址
 
-请求体中包含 `topicConfigTable`，包含了每个 Topic 的所有队列信息。
+请求体中包含
+
+* `topicConfigTable`：包含了每个 Topic 的所有队列信息。
+* `dataVersion`：Broker 中 Topic 配置的版本号，每当配置更新一次，版本号 +1
 
 上报的心跳包请求类型是:`RequestCode.REGISTER_BROKER`
 
@@ -426,6 +447,13 @@ public void shutdown() {
 HashMap<String/* topic */, Map<String /* brokerName */ , QueueData>> topicQueueTable;
 ```
 
+* QueueData
+  * brokerName：所属 Broker 名
+  * readQueueNums：读队列数量
+  * writeQueueNums：写队列数量
+  * perm：读写权限
+  * topicSysFlag：Topic 同步标记
+
 当前没有注册自定义 Topic，只注册了默认 Topic
 
 ```json
@@ -520,6 +548,10 @@ HashMap<String/* topic */, Map<String /* brokerName */ , QueueData>> topicQueueT
 HashMap<String/* brokerName */, BrokerData> brokerAddrTable;
 ```
 
+* brokerAddrs
+  * key：brokerId，0 表示 MASTER，大于 0 表示 SLAVE
+  * value：broker 地址
+
 ```json
 {
     "broker-local":{
@@ -551,6 +583,10 @@ HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
 ```java
 HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
 ```
+
+* BrokerLiveInfo：Broker 状态信息，由 Broker 心跳上报
+  * 
+
 
 ```json
 {
