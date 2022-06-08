@@ -70,11 +70,11 @@ try {
   * 必须在 finally 块中调用 `unlock()`
 * 建议
   * 当需要这些高级功能才应该使用 ReentrantLock，否则优先使用 synchronized
-  * 未来更可能会提升 synchronized 的性能而不是 ReentrantLock。因为 synchronized 是 JVM 的内置属性，能执行一些优化
+  * 未来更可能会提升 `synchronized` 的性能而不是 ReentrantLock。因为 synchronized 是 JVM 的内置属性，能执行一些优化
 
 ### 可重入
 
-如果某个**线程**试图获得一个已经由它自己持有地锁，这个请求会**成功**。“重入”意味着获取锁的操作粒度时“线程”，而不是“调用”。
+如果某个**线程**试图获得一个已经由它自己持有地锁，这个请求会**成功**。“重入”意味着获取锁的操作粒度是“线程”，而不是“调用”。
 
 ### 公平锁
 
@@ -225,7 +225,7 @@ static void addOne() {
 
 * 可重入
 * 读线程插队？
-  * 非公平（默认）：
+  * 非公平（默认）
   * 公平：等待时间最长的线程将优先获得锁。如果这个锁由读线程持有，而另一个线程请求写入锁，那么其他线程都不能获得读取锁，直到写线程使用完并且释放了写入锁。
 * 降级：一个线程持有写入锁，在不释放该锁的情况下获得读取锁。支持
 * 升级：一个线程持有读取锁，在不释放该锁的情况下获得写入锁。不支持
@@ -358,8 +358,96 @@ JDK 1.5 之后提供，允许一个或多个线程等待其他线程完成操作
 
 * CountDownLatch 计数器只能用一次，CyclicBarrier 计数器可以用 `reset()` 方法重置，可以处理更复杂的业务场景。
 * CyclicBarrier 提供其他有用的方法。
-  * `getNumberWaiting()` 获取阻塞线程熟练
+  * `getNumberWaiting()` 获取阻塞线程数量
   * `isBroken()` 阻塞的线程是否被中断
 
 ## 并发容器
 
+### 同步容器
+
+将非线程安全的容器封装在对象内部，然后控制好访问路径，就可以将非线程安全的容器封装成同步容器。
+
+```java
+SafeArrayList<T> {
+  //封装ArrayList
+  List<T> c = new ArrayList<>();
+  //控制访问路径
+  synchronized T get(int idx){
+    return c.get(idx);
+  }
+  synchronized void add(int idx, T t) {
+    c.add(idx, t);
+  }
+  synchronized boolean addIfNotExist(T t){
+    if(!c.contains(t)) {
+      c.add(t);
+      return true;
+    }
+    return false;
+  }
+}
+```
+
+`Collections` 提供了接口，将非线程安全的类包装成线程安全的类。
+
+```java
+List list = Collections.synchronizedList(new ArrayList());
+Set set = Collections.synchronizedSet(new HashSet());
+Map map = Collections.synchronizedMap(new HashMap());
+```
+
+需要注意的是**组合操作**和**迭代器操作**，这些操作不具备原子性
+
+### 并发容器
+
+#### List
+
+`List` 只有一个实现类：`CopyOnWriteArrayList`。
+
+* 它内部维护了一个数组，读操作都是基于数据进行的。
+
+* 在写的时候会将共享变量重新复制一份出来，这样读操作完全无锁。写完之后将新的变量赋值回去。
+
+![执行增加元素的内部结构图](https://static001.geekbang.org/resource/image/b8/89/b861fb667e94c4e6ea0ca9985e63c889.png)
+
+注意事项：
+
+1. CopyOnWriteArrayList 仅适用于**写操作非常少**的场景，而且**能够容忍读写的短暂不一致**。因为写入的新元素并不能立刻被遍历到。
+2. CopyOnWriteArrayList **迭代器**是只读的，不支持增删改。因为迭代器遍历的仅仅是一个快照，而对快照进行增删改是没有意义的。
+
+#### Map
+
+![https://static001.geekbang.org/resource/image/6d/be/6da9933b6312acf3445f736262425abe.png](https://static001.geekbang.org/resource/image/6d/be/6da9933b6312acf3445f736262425abe.png)
+
+此外，`ConcurrentHashMap` 的 key 是无序的，而 `ConcurrentSkipListMap` 的 key 是有序的。
+
+`ConcurrentSkipListMap` 里面的 `SkipList` 本身就是一种数据结构，中文一般都翻译为“跳表”。跳表插入、删除、查询操作平均的时间复杂度是 O(log n)，理论上和并发线程数没有关系，所以在并发度非常高的情况下，若你对 `ConcurrentHashMap` 的性能还不满意，可以尝试一下 `ConcurrentSkipListMap`。
+
+**跳表**
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206071834887.png)
+
+#### Set
+
+Set 接口的两个实现是 `CopyOnWriteArraySet` 和 `ConcurrentSkipListSet` ，使用场景可以参考前面讲述的 `CopyOnWriteArrayList` 和`ConcurrentSkipListMap`
+
+#### Queue
+
+1. **阻塞与非阻塞**，所谓阻塞指的是当队列已满时，入队操作阻塞；当队列已空时，出队操作阻塞。
+2. **单端与双端**，单端指的是只能队尾入队，队首出队；而双端指的是队首队尾皆可入队出队。
+
+阻塞队列都用Blocking关键字标识，单端队列使用Queue标识，双端队列使用Deque标识
+
+1. **单端阻塞队列**： `ArrayBlockingQueue`、`LinkedBlockingQueue`、`SynchronousQueue`、`LinkedTransferQueue`、`PriorityBlockingQueue` 和`DelayQueue`
+
+   内部一般会持有一个队列，这个队列可以是数组（其实现是ArrayBlockingQueue）也可以是链表（其实现是LinkedBlockingQueue）；甚至还可以不持有队列（其实现是SynchronousQueue），此时生产者线程的入队操作必须等待消费者线程的出队操作。而LinkedTransferQueue融合LinkedBlockingQueue和SynchronousQueue的功能，性能比LinkedBlockingQueue更好；PriorityBlockingQueue支持按照优先级出队；DelayQueue支持延时出队。
+
+   ![单端阻塞队列示意图](https://static001.geekbang.org/resource/image/59/83/5974a10f5eb0646fa94f7ba505bfcf83.png)
+
+2. **双端阻塞队列**：其实现是 `LinkedBlockingDeque`
+
+   ![双端阻塞队列示意图](https://static001.geekbang.org/resource/image/1a/96/1a58ff20f1271d899b93a4f9d54ce396.png)
+
+3. **单端非阻塞队列**：`ConcurrentLinkedQueue`
+
+4. **双端非阻塞队列**：`ConcurrentLinkedDeque`
