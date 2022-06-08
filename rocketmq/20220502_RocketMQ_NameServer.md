@@ -13,7 +13,7 @@ NameServer 是一个简单的 Topic 路由注册中心，类似 Kafka、Dubbo �
 1. Broker 管理：NameServer 接受 Broker 集群的注册信息并且保存下来作为路由信息的基本数据。然后提供心跳检测机制，检查 Broker 是否还存活。
 2. 路由信息管理：每个 NameServer 将保存关于Broker集群的整个路由信息和用于客户端查询的队列信息。然后 Producer 和 Conumser 通过 NameServer 就可以知道整个 Broker 集群的路由信息，从而进行消息的投递和消费。
 
-NameServer 通常以集群的方式部署，各实例间相互不进行信息通讯。RocketMQ 典型的双主双从部署方式如下图所示：
+NameServer 通常以集群的方式部署，各实例间相互不进行信息通讯，只是互为备份，达到高可用的效果。RocketMQ 典型的双主双从部署方式如下图所示：
 
 ![](../assets/rocketmq_struct.drawio.png)
 
@@ -585,7 +585,10 @@ HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
 ```
 
 * BrokerLiveInfo：Broker 状态信息，由 Broker 心跳上报
-  * 
+  * lastUpdateTimestamp：上次更新时间戳
+  * dataVersion：元数据被更新的次数，在 Broker 中统计，每次更新 +1
+  * channel：Netty Channel
+  * haServerAddr：HA 服务器地址
 
 
 ```json
@@ -1072,3 +1075,4 @@ public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
 * [官方文档——架构设计](https://github.com/apache/rocketmq/blob/master/docs/cn/architecture.md)
 * [深入剖析RocketMQ源码-NameServer](https://www.cnblogs.com/vivotech/p/15323042.html)
 * [Namesrv nearby route](https://github.com/apache/rocketmq/issues/4382)
+* 《RocketMQ 技术内幕 第2版》
