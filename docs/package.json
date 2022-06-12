@@ -1,0 +1,23 @@
+{
+  "name": "knowledge",
+  "version": "0.0.1",
+  "description": "消息中间件技术博客",
+  "main": "index.js",
+  "authors": {
+    "name": "Scarb",
+    "email": "jjhfen00@163.com"
+  },
+  "repository": "https://github.com/HScarb/knowledge/knowledge",
+  "scripts": {
+    "dev": "vuepress dev src --temp .temp",
+    "build": "vuepress build src"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "vuepress": "^1.5.3",
+    "vuepress-theme-reco": "^1.6.13",
+    "vuepress-theme-vdoing": "^1.12.3",
+    "watchpack": "^1.6.1"
+  },
+  "dependencies": {}
+}

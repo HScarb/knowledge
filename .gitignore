@@ -1,2 +1,10 @@
 .idea
 venv/
+
+*/.temp
+*/node_modules
+*/dist/
+/docs/src/.vuepress/dist/
+
+config.py
+*/__pycache__
