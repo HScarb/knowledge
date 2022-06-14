@@ -235,3 +235,141 @@ Who.
 a\x{221E}b
 ```
 
+### 模块与函数
+
+#### 模块
+
+模块是Erlang的基本代码单元。模块保存在扩展名为 `.erl` 的文件里，而且必须先编译才能运行模块里的代码。编译后的模块以 `.beam` 作为扩展名。
+
+* 逗号 `,` 分隔函数调用、数据构造和模式中的参数。
+* 分号 `;` 分隔子句。我们能在很多地方看到子句，例如函数定义，以及case、 if、try..catch和receive表达式。
+* 句号 `.`（后接空白）分隔函数整体，以及shell里的表达式。
+
+```erlang
+% geometry.erl
+-module(geometry)   % 模块声明，模块名必须与存放该模块的主文件名相同
+-export([area/1])   % 导出声明，Name/N 指带有 N 个参数的函数 Name。已导出函数相当于公共方法，未导出函数相当于私有方法
+
+% 函数定义，area 函数有两个子句
+area({rectangle, Width, Height}) -> Width * Height;     % 子句以分号隔开
+area({square, Side}) -> Side * Side.                    % 以句号结尾
+```
+
+```erlang
+1> c(geometry).         % 在 erlang shell 中编译，编译之后产生 geometry.beam 目标代码块
+{ok,geometry}
+2> geometry:area({rectangle, 10, 5}).   % 调用函数，要附上模块名
+50
+3> geometry:area({square, 3}). 
+9
+```
+
+```erlang
+-module(geometry).
+-export([area/1, test/0]).
+
+% 添加测试，测试仅仅需要模式匹配和=
+test() ->
+  12 = area({rectangle, 3, 4}),
+  144 = area({square, 12}),
+  tests_worked.
+
+area({rectangle, Width, Height}) ->
+  Width * Height;
+area({square, Side}) ->
+  Side * Side.
+```
+
+```erlang
+5> c(geometry).
+{ok,geometry}
+6> geometry:test().
+tests_worked
+```
+
+```erlang
+% 情况分析函数
+total([{What, N} | T]) -> shop:cost(What) * N + total(T);
+total([]) -> 0.
+```
+
+#### 高阶函数 fun
+
+* Erlang 是函数式编程语言，表示函数可以被用作参数，也可以返回函数。
+* 操作其他函数的函数被称为高阶函数。
+* 代表函数的数据类型是 `fun`。
+
+```erlang
+1> Double = fun(X) -> 2 * X end.
+#Fun<erl_eval.44.65746770>
+2> Double(2).
+4
+% fun 可以有多个子句
+3> TempConvert = fun({c, C}) -> {f, 32 + C * 9 / 5};
+                    ({f, F}) -> {c, (F - 32) * 5 / 9}
+                 end.
+#Fun<erl_eval.44.65746770>
+4> TempConvert({c, 100}).
+{f,212.0}
+5> TempConvert({f, 212}).
+{c,100.0}
+```
+
+```erlang
+% 标准库高阶函数
+%% map
+6> L = [1,2,3,4].
+[1,2,3,4]
+7> lists:map(fun(X) -> 2 * X end, L).
+[2,4,6,8]
+
+%% filter
+8> Even = fun(X) -> (X rem 2) =:= 0 end.
+#Fun<erl_eval.44.65746770>
+9> Even(8).
+true
+10> Even(7).
+false
+11> lists:map(Even, [1,2,3,4,5,6,7,8]).
+[false,true,false,true,false,true,false,true]
+12> lists:filter(Even, [1,2,3,4,5,6,7,8]).
+[2,4,6,8]
+```
+
+```erlang
+% 返回 fun 的函数，括号内的东西就是返回值
+13> MakeTest = fun(L) -> (fun(X) -> lists:member(X, L) end) end.
+#Fun<erl_eval.44.65746770>
+15> Fruit = [apple, pear, orange].
+[apple,pear,orange]
+16> IsFruit = MakeTest(Fruit).
+#Fun<erl_eval.44.65746770>
+17> IsFruit(pear).
+true
+18> IsFruit(dog).
+false
+19> lists:filter(IsFruit, [dog,orange,cat,apple,bear]).
+[orange,apple]
+
+22> Mult = fun(Times) -> (fun(X) -> X * Times end) end.
+#Fun<erl_eval.44.65746770>
+23> Triple = Mult(3).
+#Fun<erl_eval.44.65746770>
+24> Triple(5).
+15
+```
+
+##### 实现 for
+
+```erlang
+% Erlang 没有 for 循环，而是需要自己编写控制结构
+
+% 创建列表[F(1), F(2), ..., F(10)]
+for(Max, Max, F) -> [F(Max)];
+for(I, Max, F) -> [F(I) | for(I + 1, Max, F)].
+
+9> lib_misc:for(1,10,fun(I)->I end).
+[1,2,3,4,5,6,7,8,9,10]
+10> lib_misc:for(1,10,fun(I)->I*I end). 
+[1,4,9,16,25,36,49,64,81,100]
+```
