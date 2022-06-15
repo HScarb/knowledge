@@ -373,3 +373,235 @@ for(I, Max, F) -> [F(I) | for(I + 1, Max, F)].
 10> lib_misc:for(1,10,fun(I)->I*I end). 
 [1,4,9,16,25,36,49,64,81,100]
 ```
+
+#### 列表处理 & 列表推导
+
+```erlang
+%% 列表求和函数
+sum([H | T]) -> H + sum(T);
+sum([]) -> 0.
+
+%% map 函数
+map(_, []) -> [];
+map(F, [H | T]) -> [F(H) | map(F, T)].
+
+total(L) -> sum(map(fun({What, N}) -> shop:cost(What) * N end, L)).
+```
+
+列表推导（list comprehension）是无需使用fun、 map或filter就能创建列表的表达式。它让程序变得更短，更容易理解。
+
+```erlang
+1> L = [1,2,3,4,5]. 
+[1,2,3,4,5]
+2> [2*X||X<-L]. % [F(X) || X <- L]：由 F(X) 组成的列表（X 从列表 L 中提取）
+[2,4,6,8,10]
+```
+
+列表推导的常规形式
+
+```erlang
+[X || Qualifier1, Qualifier2, ...]
+```
+
+X 是任一表达式，后面的限定符可以是生成器、位串生成器或过滤器。
+
+* 生成器（generator）的写法是 `Pattern <- ListExpr` ，其中的 `ListExp` 必须是一个能够得出列表的表达式。
+* 位串（bitstring）生成器的写法是 `BitStringPattern <= BitStringExpr` ，其中的 `BitStringExpr` 必须是一个能够得出位串的表达式。
+* 过滤器（filter）既可以是**判断函数（即返回true或false的函数）**，也可以是**布尔表达式**。请注意，列表推导里的生成器部分起着过滤器的作用
+
+```erlang
+%% 快速排序
+qsort([]) -> [];
+qsort([Pivot | T]) ->
+  qsort([X || X <- T, X < Pivot])         % 生成器 + 过滤器，生成一个比 Pivot 小的数组成的列表，递归
+  ++ [Pivot]                              % ++ 是中缀插入操作符，在中间插入 Pivot
+  ++ qsort([X || X <- T, X >= Pivot]).
+
+%% 毕达哥拉斯三元数组
+%% 提取1到N的所有A值，1到N的所有B值，1到N的所有C值，条件是A + B + C小于等于N并且A*A + B*B = C*C。
+pythag(N) ->
+  [
+    {A, B, C} ||
+    A <- lists:seq(1, N),
+    B <- lists:seq(1, N),
+    C <- lists:seq(1, N),
+    A + B + C =< N,
+    A * A + B * B =:= C * C
+  ].
+```
+
+#### 内置函数
+
+built-in function，是那些作为Erlang语言定义一部分的函数。有些内置函数是用Erlang实现的，但大多数是用Erlang虚拟机里的底层操作实现的。最常用的内置函数（例如list_to_tuple）是自动导入的。
+
+```erlang
+4> list_to_tuple([12,cat,"hello"]).
+{12,cat,"hello"}
+5> time().
+{22,55,25}
+```
+
+#### 关卡
+
+* 关卡（guard）是一种结构，可以用它来增加模式匹配的威力，它通过 `when` 引入。通过使用关卡，可以对某个模式里的变量执行简单的测试和比较。
+  * 关卡由一系列关卡表达式组成，由 `,` 分割，都为 true 是值采薇 true。（AND）
+* 关卡序列（guard sequence）是指单一或一系列的关卡，用 `;` 分割，只要一个为 true，它的值就为 true。（OR）
+* 原子 true 关卡防止在某个 if 表达式的最后。
+
+```erlang
+% Guard 是用于增强模式匹配的结构。
+% Guard 可用于简单的测试和比较。
+% Guard 可用于函数定义的头部，以`when`关键字开头，或者其他可以使用表达式的地方。
+max(X, Y) when X > Y -> X;
+max(X, Y) -> Y.
+
+% guard 可以由一系列 guard 表达式组成，这些表达式以逗号分隔。
+% `GuardExpr1, GuardExpr2, ..., GuardExprN` 为真，当且仅当每个 guard 表达式均为真。
+is_cat(A) when is_atom(A), A =:= cat -> true;
+is_cat(A) -> false.
+is_dog(A) when is_atom(A), A =:= dog -> true;
+is_dog(A) -> false.
+
+% guard 序列 `G1; G2; ...; Gn` 为真，当且仅当其中任意一个 guard 表达式为真。
+is_pet(A) when is_dog(A); is_cat(A) -> true;
+is_pet(A) -> false.
+```
+
+#### case
+
+```erlang
+case Expression of
+  Pattern1 [when Guard1] -> Body1;
+  Pattern2 [when Guard2] -> Body2;
+  ...
+end
+
+% `case` 表达式。
+% `filter` 返回由列表`L`中所有满足`P(x)`为真的元素`X`组成的列表。
+filter(P, [H|T]) ->
+  case P(H) of
+    true -> [H|filter(P, T)];
+    false -> filter(P, T)
+  end;
+filter(P, []) -> [].
+filter(fun(X) -> X rem 2 == 0 end, [1, 2, 3, 4]). % [2, 4]
+```
+
+1. `Expression` 被执行，假设它的值为 `Value` 
+2. `Value` 轮流与 `Pattern1`（带有可选的关卡 `Guard1`）、`Pattern2` 等模式进行匹配，直到匹配成功。
+3. 一旦发现匹配，相应的表达式序列就会执行，而表达式序列执行的结果就是 `case` 表达式的值。如果所有模式都不匹配，就会发生异常错误（exception）。
+
+#### if
+
+```erlang
+if
+  Guard1 -> Expr_seq1;
+  Guard2 -> Expr_seq2;
+  ...
+end
+
+% `if` 表达式。
+max(X, Y) ->
+  if
+    X > Y -> X;
+    X < Y -> Y;
+    true -> nil;
+  end.
+```
+
+1. 执行 `Guard1`。 如果得到的值为 `true`，那么if的值就是执行表达式序列 `Expr_seq1` 所得到的值。
+2. 如果 `Guard1` 不成功，就会执行 `Guard2`， 以此类推，直到某个关卡成功为止。
+3. if表达式必须至少有一个关卡的执行结果为true， 否则就会发生异常错误。
+4. 很多时候， `if` 表达式的最后一个关卡是原子 `true`， 确保当其他关卡都失败时表达式的最后部分会被执行。（相当于最后带 else）因为 erlang 的所有表达式都应该有值。
+
+#### 归集器
+
+只遍历列表一次，返回两个列表。
+
+```erlang
+%% 归集器
+odds_and_even(L) -> odds_and_evens_acc(L, [], []).
+odds_and_evens_acc([H|T], Odds, Evens) ->
+  case (H rem 2) of
+    1 -> odds_and_evens_acc(T, [H|Odds], Evens);
+    0 -> odds_and_evens_acc(T, Odds, [H|Evens])
+  end;
+odds_and_evens_acc([], Odds, Evens) ->
+  {Odds, Evens}.
+```
+
+### 记录（record）与映射组（map）
+
+**元组**用于保存固定数量的元素，而**列表**用于保存可变数量的元素。**记录**其实就是**元组**的另一种形式。
+
+* 使用 record：有一大堆元组，并且每个元组都有相同的结构
+* 使用 map：键值对
+
+#### record
+
+```erlang
+% Record 可以将元组中的元素绑定到特定的名称。
+% Record 定义可以包含在 Erlang 源代码中，也可以放在后缀为`.hrl`的文件中（Erlang 源代码中 include 这些文件）。
+-record(todo, {
+  status = reminder,  % Default value
+  who = joe,
+  text
+}).
+
+% 在定义某个 record 之前，我们需要在 shell 中导入 record 的定义。
+% 我们可以使用 shell 函数`rr` (read records 的简称）。
+rr("records.hrl").  % [todo]
+
+% 创建和更新 record。
+X = #todo{}.  % 创建 todo，所有键都是原子
+% #todo{status = reminder, who = joe, text = undefined}
+X1 = #todo{status = urgent, text = "Fix errata in book"}.
+% #todo{status = urgent, who = joe, text = "Fix errata in book"}
+X2 = X1#todo{status = done}.  % 创建 X1 的副本，并修改 status 为 done
+% #todo{status = done,who = joe,text = "Fix errata in book"}
+
+% 提取 record 字段
+> #todo{who=W, text=Txt} = X2.
+> W.
+joe
+> Txt.
+"Fix errata in book"
+% 如果只是想要记录里的单个字段，就可以使用“点语法”来提取该字段。
+> X2#todo.text.
+"Fix errata in book"
+
+% 让 shell 忘掉 todo 定义
+rf(todo).
+```
+
+#### map
+
+* 映射组在系统内部是作为有序集合存储的，打印时总是使用各键排序后的顺序。
+* 表达式K => V有两种用途，一种是将现有键K的值更新为新值V，另一种是给映射组添加一个全新的K-V对。这个操作总是成功的。
+* 表达式K := V的作用是将现有键K的值更新为新值V。 如果被更新的映射组不包含键K，这个操作就会失败。
+* 映射组在比较时首先会比大小，然后再按照键的排序比较键和值。
+
+```erlang
+% 创建 map
+> F1 = #{a => 1, b => 2}. 
+#{a => 1,b => 2}
+
+% => 更新或设值
+11> F3 = F1#{c=>xx}.
+#{a => 1,b => 2,c => xx}
+% := 只能更新值
+12> F4=F1#{c := 3}.
+** exception error: bad key: c
+     in function  maps:update/3
+        called as maps:update(c,3,#{a => 1,b => 2})
+        *** argument 3: not a map
+     in call from erl_eval:'-expr/5-fun-0-'/2 (erl_eval.erl, line 256)
+     in call from lists:foldl/3 (lists.erl, line 1267)
+13> F4 = F3#{c := 3}. 
+#{a => 1,b => 2,c => 3}
+```
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160157999.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160157692.png)
+---
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160159946.png)
