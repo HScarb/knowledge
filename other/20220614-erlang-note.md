@@ -605,3 +605,56 @@ rf(todo).
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160157692.png)
 ---
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160159946.png)
+
+### 顺序程序的错误处理
+
+* exit(Why)
+  * 当你**确实想要终止当前进程**时就用它。如果这个异常错误没有被捕捉到，信号 `{'EXIT',
+Pid,Why}` 就会被广播给当前进程链接的所有进程。
+* throw(Why)
+  * 这个函数的作用是抛出一个**调用者可能想要捕捉的异常错误**。在这种情况下，我们**注明**了
+被调用函数可能会抛出这个异常错误。有两种方法可以代替它使用
+    * 为通常的情形编写代码并且有意忽略异常错误
+    * 把调用封装在一个 `try...catch` 表达式里， 然后对错误进行处理。
+* error(Why)
+  * 这个函数的作用是指示“崩溃性错误”，也就是**调用者没有准备好处理的非常严重的问题**。它与系统内部生成的错误差不多。
+
+```erlang
+% 当遇到内部错误或显式调用时，会触发异常。
+% 显式调用包括 `throw(Exception)`, `exit(Exception)` 和
+% `erlang:error(Exception)`.
+generate_exception(1) -> a;
+generate_exception(2) -> throw(a);
+generate_exception(3) -> exit(a);
+generate_exception(4) -> {'EXIT', a};
+generate_exception(5) -> erlang:error(a).
+
+% Erlang 有两种捕获异常的方法。其一是将调用包裹在`try...catch`表达式中。
+catcher(N) ->
+  try generate_exception(N) of
+    Val -> {N, normal, Val}
+  catch
+    throw:X -> {N, caught, thrown, X};
+    exit:X -> {N, caught, exited, X};
+    error:X -> {N, caught, error, X}
+  end.
+
+% 另一种方式是将调用包裹在`catch`表达式中。
+% 此时异常会被转化为一个描述错误的元组。
+catcher(N) -> catch generate_exception(N).
+```
+
+#### 用 try ... catch 捕获异常
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206170054163.png)
+
+* `try ... catch` 具有一个值
+* `try ... catch` 表达式和case表达式之间的相似性，像是它的强化版，基本上是 `case` 表达式加上最后的 `catch` 和 `after` 区块。
+
+首先执行FuncOrExpessionSeq。 如果执行过程没有抛出异常错误，那么函数的返回值就会与Pattern1（ 以及可选的关卡Guard1）、 Pattern2等模式进行
+匹配，直到匹配成功。如果能匹配，那么整个try...catch的值就通过执行匹配模式之后的表达
+式序列得出。
+如果FuncOrExpressionSeq在执行中抛出了异常错误，那么ExPattern1等捕捉模式就会与
+它进行匹配，找出应该执行哪一段表达式序列。ExceptionType是一个原子（ throw、exit和error
+其中之一），它告诉我们异常错误是如何生成的。如果省略了ExceptionType， 就会使用默认值
+throw。
