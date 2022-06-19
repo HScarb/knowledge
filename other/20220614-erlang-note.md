@@ -237,7 +237,7 @@ a\x{221E}b
 
 ### 模块与函数
 
-#### 模块
+#### 模块：module
 
 模块是Erlang的基本代码单元。模块保存在扩展名为 `.erl` 的文件里，而且必须先编译才能运行模块里的代码。编译后的模块以 `.beam` 作为扩展名。
 
@@ -374,7 +374,7 @@ for(I, Max, F) -> [F(I) | for(I + 1, Max, F)].
 [1,4,9,16,25,36,49,64,81,100]
 ```
 
-#### 列表处理 & 列表推导
+#### 列表处理（sum、map）
 
 ```erlang
 %% 列表求和函数
@@ -387,6 +387,8 @@ map(F, [H | T]) -> [F(H) | map(F, T)].
 
 total(L) -> sum(map(fun({What, N}) -> shop:cost(What) * N end, L)).
 ```
+
+#### 列表推导（[F(X) || X <- L]）
 
 列表推导（list comprehension）是无需使用fun、 map或filter就能创建列表的表达式。它让程序变得更短，更容易理解。
 
@@ -441,10 +443,10 @@ built-in function，是那些作为Erlang语言定义一部分的函数。有些
 {22,55,25}
 ```
 
-#### 关卡
+#### 关卡（when）
 
-* 关卡（guard）是一种结构，可以用它来增加模式匹配的威力，它通过 `when` 引入。通过使用关卡，可以对某个模式里的变量执行简单的测试和比较。
-  * 关卡由一系列关卡表达式组成，由 `,` 分割，都为 true 是值采薇 true。（AND）
+* 关卡（guard）是一种结构，可以用它来增加模式匹配的威力，它通过 `when` 引入。通过使用关卡，可以**对某个模式里的变量执行简单的测试和比较**。
+  * 关卡由一系列关卡表达式组成，由 `,` 分割，都为 true 是值才为 true。（AND）
 * 关卡序列（guard sequence）是指单一或一系列的关卡，用 `;` 分割，只要一个为 true，它的值就为 true。（OR）
 * 原子 true 关卡防止在某个 if 表达式的最后。
 
@@ -467,7 +469,7 @@ is_pet(A) when is_dog(A); is_cat(A) -> true;
 is_pet(A) -> false.
 ```
 
-#### case
+#### case 表达式
 
 ```erlang
 case Expression of
@@ -491,7 +493,7 @@ filter(fun(X) -> X rem 2 == 0 end, [1, 2, 3, 4]). % [2, 4]
 2. `Value` 轮流与 `Pattern1`（带有可选的关卡 `Guard1`）、`Pattern2` 等模式进行匹配，直到匹配成功。
 3. 一旦发现匹配，相应的表达式序列就会执行，而表达式序列执行的结果就是 `case` 表达式的值。如果所有模式都不匹配，就会发生异常错误（exception）。
 
-#### if
+#### if 表达式
 
 ```erlang
 if
@@ -610,10 +612,10 @@ rf(todo).
 
 * exit(Why)
   * 当你**确实想要终止当前进程**时就用它。如果这个异常错误没有被捕捉到，信号 `{'EXIT',
-Pid,Why}` 就会被广播给当前进程链接的所有进程。
+  Pid,Why}` 就会被广播给当前进程链接的所有进程。
 * throw(Why)
   * 这个函数的作用是抛出一个**调用者可能想要捕捉的异常错误**。在这种情况下，我们**注明**了
-被调用函数可能会抛出这个异常错误。有两种方法可以代替它使用
+    被调用函数可能会抛出这个异常错误。有两种方法可以代替它使用
     * 为通常的情形编写代码并且有意忽略异常错误
     * 把调用封装在一个 `try...catch` 表达式里， 然后对错误进行处理。
 * error(Why)
@@ -651,10 +653,95 @@ catcher(N) -> catch generate_exception(N).
 * `try ... catch` 具有一个值
 * `try ... catch` 表达式和case表达式之间的相似性，像是它的强化版，基本上是 `case` 表达式加上最后的 `catch` 和 `after` 区块。
 
-首先执行FuncOrExpessionSeq。 如果执行过程没有抛出异常错误，那么函数的返回值就会与Pattern1（ 以及可选的关卡Guard1）、 Pattern2等模式进行
-匹配，直到匹配成功。如果能匹配，那么整个try...catch的值就通过执行匹配模式之后的表达
-式序列得出。
-如果FuncOrExpressionSeq在执行中抛出了异常错误，那么ExPattern1等捕捉模式就会与
-它进行匹配，找出应该执行哪一段表达式序列。ExceptionType是一个原子（ throw、exit和error
-其中之一），它告诉我们异常错误是如何生成的。如果省略了ExceptionType， 就会使用默认值
-throw。
+首先执行 `FuncOrExpessionSeq` 。 如果执行过程没有抛出异常错误，那么函数的返回值就会与Pattern1（ 以及可选的关卡Guard1）、 Pattern2等模式进行匹配，直到匹配成功。如果能匹配，那么整个 `try...catch` 的值就通过执行匹配模式之后的表达式序列得出。
+如果 `FuncOrExpressionSeq` 在执行中抛出了异常错误，那么ExPattern1等捕捉模式就会与它进行匹配，找出应该执行哪一段表达式序列。ExceptionType是一个原子（ throw、exit和error其中之一），告诉我们异常错误是如何生成的。如果省略了ExceptionType， 就会使用默认值throw。
+
+```erlang
+% Erlang 有两种捕获异常的方法。其一是将调用包裹在`try...catch`表达式中。
+catcher(N) ->
+  try generate_exception(N) of
+    Val -> {N, normal, Val}
+  catch
+    throw:X -> {N, caught, thrown, X};
+    exit:X -> {N, caught, exited, X};
+    error:X -> {N, caught, error, X}
+  end.
+
+demo1() ->
+  [catcher(I) || I <- [1, 2, 3, 4, 5]].
+
+% 提供了概括信息
+>try_test:demo1().
+[{1,normal,a},
+ {2,caught,thrown,a},
+ {3,caught,exited,a},
+ {4,normal,{'EXIT',a}},
+ {5,caught,error,a}]
+```
+
+#### 用 catch 捕捉异常错误
+
+`catch` 和 `try ... catch` 里的 `catch` 不是一回事，异常错误如果发生在 `catch` 语句里， 就会被转换成一个描述此错误的 `{'EXIT', ...}` **元组**。  
+
+```erlang
+% 另一种方式是将调用包裹在`catch`表达式中。
+% 此时异常会被转化为一个描述错误的元组。
+catcher2(N) ->
+  catch generate_exception(N).
+
+demo2() ->
+  [{I, catcher2(I)} || I <- [1, 2, 3, 4, 5]].
+
+% 提供了详细的栈跟踪信息
+> try_test:demo2(). 
+[{1,a},
+ {2,a},
+ {3,{'EXIT',a}},
+ {4,{'EXIT',a}},
+ {5,
+  {'EXIT',{a,[{try_test,generate_exception,1,
+                        [{file,"try_test.erl"},{line,23}]},
+              {try_test,catcher2,1,[{file,"try_test.erl"},{line,38}]},
+              {try_test,'-demo2/0-lc$^0/1-0-',1,
+                        [{file,"try_test.erl"},{line,41}]},
+              {try_test,'-demo2/0-lc$^0/1-0-',1,
+                        [{file,"try_test.erl"},{line,41}]},
+              {erl_eval,do_apply,6,[{file,"erl_eval.erl"},{line,689}]},
+              {shell,exprs,7,[{file,"shell.erl"},{line,686}]},
+              {shell,eval_exprs,7,[{file,"shell.erl"},{line,642}]},
+              {shell,eval_loop,3,[{file,"shell.erl"},{line,627}]}]}}}]
+
+```
+
+#### 针对异常的编程样式
+
+```erlang
+sqrt(X) when X < 0 ->
+  % 内置函数 error 可以改进错误信息
+  error({squareRootNegativeArgument, X});
+sqrt(X) ->
+  math:sqrt(X).
+
+% 函数多半应该返回 {ok, Value} 或 {error, Reason}
+error_process(X) ->
+  case f(X) of
+    {ok, Val} ->
+      do_some_thing_with(Val);
+    {error, Why} ->
+      %% process this error
+      do_other_thing_with(error)
+  end.
+
+% 捕捉一切可能的异常错误
+error_process3(X) ->
+  try my_func(X)
+  catch
+    _:_ -> process_error()
+  end.
+
+```
+
+#### 栈跟踪（erlang:get_stacktrace()）
+
+### 二进制型与位语法
+
