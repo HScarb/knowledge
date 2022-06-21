@@ -745,3 +745,111 @@ error_process3(X) ->
 
 ### 二进制型与位语法
 
+### 顺序编程补遗
+
+#### apply
+
+内置函数apply(Mod, Func, [Arg1, Arg2, ..., ArgN])会将模块Mod里的Func函数应用到Arg1, Arg2, ... ArgN这些参数上。
+
+```erlang
+> apply(erlang, atom_to_list, [hello]).
+"hello"
+```
+
+应当尽量避免使用apply。 当函数的参数数量能预先知道时， `M:F(Arg1, Arg2, ... ArgN)` 这种调用形式要比apply好得多。
+
+#### 算数表达式
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206210040391.png)
+
+#### 属性
+
+模块属性的语法是 `-AtomTag(...)` ， 它们被用来定义文件的某些属性。
+
+包含预定义的模块属性和用户定义的属性。
+
+##### 预定义模块属性
+
+* `-module(modulename)`：模块声明
+* `-import(Mod, [Name/Arity1, Name2/Arity2, ...])`：列举了哪些函数要导入到模块中
+* `-compile(Options)`：添加 Options 到编译器选项列表中
+* `-vsn(Version)`：指定模块的版本号
+
+##### 用户定义的模块属性
+
+* `-SomeTag(Value).`：`SomeTag` 必须是一个原子，Value 必须是一个字面数据类型
+
+```erlang
+-author({jeo, armstring}).
+-purpose("example of attributes").
+```
+
+#### 块表达式
+
+用于以下情形：代码某处的Erlang语法要求单个表达式，但我们想使用一个表达式序列
+
+```erlang
+begin
+    Expr1,
+    ...,
+    ExprN
+end
+```
+
+#### 布尔值 布尔表达式
+
+Erlang没有单独的布尔值类型。不过原子true和false具有特殊的含义，可以用来表示布尔值。
+
+* `not B1`
+* `B1 and B2`
+* `B1 or B2`
+* `B1 xor B2`
+
+#### 动态代码载入
+
+每当调用 `someModule:someFunction(...)` 时，调用的总是**最新版模块里的最新版函数**，哪怕当代码在模块里运行时**重新编译了该模块也是如此**。
+Erlang允许一个模块的**两个**版本同时运行：当前版和旧版。重新编译某个模块时，任何运行旧版代码的进程都会被终止，当前版成为旧版，新编译的版本则成为当前版
+
+#### 预处理器
+
+Erlang模块在编译前会自动由Erlang的预处理器进行处理。预处理器会展开源文件里所有的宏，并插入必要的包含文件。
+
+如调试某个有问题的宏时，应该保存预处理器的输出。
+
+```bash
+erlc -P some_module.erl
+```
+
+#### 转义序列
+
+可以在字符串和带引号的原子里使用转义序列来输入任何不可打印的字符。
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206220048388.png)
+
+#### 函数引用
+
+引用在当前或外部模块里定义的某个函数。
+
+* `fun LocalFunc/Arity`：引用当前模块的本地函数
+* `fun Mod:RemoteFunc/Arity`：引用 Mod 模块的外部函数
+
+#### 包含文件
+
+许多模块需要共享通用的**记录**定义，就会把它们放到包含文件里，再由所有需要这些定义的模块包含此文件
+
+`-include(Filename).`
+
+按照Erlang的惯例，包含文件的扩展名是.hrl。 FileName应当包含一个绝对或相对路径，使预处理器能找到正确的文件。包含库的头文件（ library header file）时可以用下面的语法：
+
+```erlang
+-include_lib("kernel/include/file.hrl")
+```
+
+#### 列表操作：++、--
+
+`++` 和 `--` 是用于列表添加和移除的中缀操作符。
+
+* `A ++ B` 使A和B相加（也就是附加）。
+* `A -- B` 从列表A中移除列表B。 移除的意思是B中所有元素都会从A里面去除。
+  * 请注意：如果符号X在B里只出现了K次，那么A只会移除前K个X。
+
