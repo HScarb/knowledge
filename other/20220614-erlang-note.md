@@ -853,6 +853,39 @@ erlc -P some_module.erl
 * `A -- B` 从列表A中移除列表B。 移除的意思是B中所有元素都会从A里面去除。
   * 请注意：如果符号X在B里只出现了K次，那么A只会移除前K个X。
 
+#### 宏 -define()
+
+```erlang
+% 宏语法模板，erlang预处理器 epp 碰到 ?MacronName 的表达式时会展开这个宏
+-define(Constant, Replacement).
+-define(Func(Var1, Var2, .., Var), Replacement).
+```
+
+```erlang
+-define(macro1(X, Y), {a, X, Y}).
+
+foo(A) ->
+  ?macro1(A+10, b)
+
+% --- 展开后 ---
+foo(A) ->
+  {a, A+10, b}.
+```
+
+预制宏
+
+* `?FILE`
+* `?MODULE`
+* `?LINE`
+
+##### 宏控制流
+
+* `-undef(Macro).`
+* `-ifdef(Macro).`
+* `-ifndef(Macro).`
+* `-else.`
+* `-endif.`
+
 #### 数字
 
 Erlang里的数字不是整数就是浮点数，整数的运算时精确的。
