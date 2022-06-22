@@ -994,3 +994,5 @@ main(Args) ->
   io:format("Hello world~n").
 ```
 
+#### makefile 使编译自动化
+
