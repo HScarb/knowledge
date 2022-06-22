@@ -853,3 +853,111 @@ erlc -P some_module.erl
 * `A -- B` 从列表A中移除列表B。 移除的意思是B中所有元素都会从A里面去除。
   * 请注意：如果符号X在B里只出现了K次，那么A只会移除前K个X。
 
+#### 数字
+
+Erlang里的数字不是整数就是浮点数，整数的运算时精确的。
+
+```erlang
+% K 进制
+2#00101010
+16#af6bfa23
+
+% $ 写法，代表 ASCII 字符的整数代码
+$a % 97的简写
+
+% 浮点数
+1.0
+3.14159
+-2.3e+6
+23.56E-27
+```
+
+#### 操作符优先级
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206222239575.png)
+
+#### 进程字典
+
+每个Erlang进程都有一个被称为进程字典（ process dictionary）的私有数据存储区域。他是一个 map。
+
+* `put(Key, Value) -> OldValue.`
+* `get(Key) -> Value.`
+* `get() -> [{Key, Value}].`：返回整个进程字典
+* `get_keys(Value) -> [Key].`：返回字典里面所有值为 Value 的键
+* `erase(Key) -> Value.`
+* `erase() -> [{Key, Value}].`
+
+```erlang
+1> erase().
+[]
+2> put(x, 20).
+undefined
+3> get(x).
+20
+4> get(y).
+undefined
+5> put(y, 40).
+undefined
+6> get(y).
+40
+7> get().
+[{y,40},{x,20}]
+8> erase(x).
+20
+9> get().
+[{y,40}]
+```
+
+#### 引用
+
+引用（ reference）是一种全局唯一的Erlang数据类型。它们由内置函数 `erlang:make_ref()` 创建。 引用的用途是创建独一无二的标签，把它存放在数据里并在后面用于比较是否相等。
+
+#### 短路布尔表达式
+
+只在必要时才对参数求值
+
+* `Expr1 orelse Expr2`：Expr1 || Expr2
+* `Expr1 andalso Expr2`：Expr1 && Expr2
+
+#### 比较数据类型
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206222300669.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206222301310.png)
+
+### 类型
+
+### 编译和运行程序
+
+#### 改变开发环境
+
+* `code:get_path()` 获取当前载入路径值
+* `-spec code:add_patha(Dir)` 向载入路径的开头添加一个新目录 Dir
+* `-spec code:add_pathz(Dir)` 向载入路径的末端添加一个新目录 Dir
+
+#### 运行程序的不同方式
+
+```erlang
+% erlang shell
+erl
+1> c(hello).
+{ok,hello}
+2> hello:start().
+Hello world
+ok
+
+% 命令行界面直接编译和运行
+$ erlc hello.erl
+% -noshell 不带交互式 shell 的方式启动 Erlang
+% -s hello start 运行 hello:start() 函数
+% -s init stop 在之前的命令完成后执行 init:stop() 函数，从而停止系统
+$ erl -noshell -s hello start -s init stop
+Hello world
+```
+
+```bash
+#!/usr/bin/env escript
+
+main(Args) ->
+  io:format("Hello world~n").
+```
+

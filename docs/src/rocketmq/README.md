@@ -28,5 +28,7 @@
 
 [RocketMQ 消息发送设计和原理详解 源码剖析](20220606-rocketmq-send-message.md)
 
+[RocketMQ Memory Store](20220618-rocketmq-memory-store.md)
+
 [RocketMQ 的底层存储实现：内存映射文件 MappedFile、MappedFileQueue 源码剖析](99991231-rocketmq-mappedfile.md)
 
