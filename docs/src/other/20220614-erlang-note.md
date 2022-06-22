@@ -1,3 +1,9 @@
+---
+title: Erlang 学习笔记
+author: Scarb
+date: 2022-06-14
+---
+
 # Erlang 学习笔记
 
 ## 顺序编程
@@ -604,9 +610,7 @@ rf(todo).
 ```
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160157999.png)
-
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160157692.png)
-
 ---
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160159946.png)
 
@@ -999,3 +1003,9 @@ main(Args) ->
 #### makefile 使编译自动化
 
 ## 并发和分布式程序
+
+---
+
+欢迎关注公众号【消息中间件】（middleware-mq），更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)

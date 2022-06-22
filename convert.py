@@ -8,7 +8,7 @@ from fnmatch import fnmatch
 import aliyun_oss
 
 ROOT = '.'
-SOURCE_FOLDERS = ['java', 'rabbitmq', 'rocketmq']
+SOURCE_FOLDERS = ['java', 'rabbitmq', 'rocketmq', 'other']
 # SOURCE_FOLDERS = ['distributed']
 OUTPUT_FOLDER = '_output'
 DOCS_FOLDER = os.path.join('docs', 'src')

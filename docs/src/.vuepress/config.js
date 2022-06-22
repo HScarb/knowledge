@@ -60,6 +60,10 @@ module.exports = {
         link: '/rocketmq/'
       },
       {
+        text: 'Other',
+        link: '/other/'
+      },
+      {
         text: 'Follow Me',
         items: [
           {text: 'Github', link: 'https://github.com/HScarb/knowledge'},
