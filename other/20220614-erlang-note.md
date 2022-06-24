@@ -999,3 +999,68 @@ main(Args) ->
 #### makefile 使编译自动化
 
 ## 并发和分布式程序
+
+### 现实世界中的并发
+
+Erlang进程没有共享内存，每个进程都有它自己的内存。要改变其他某个进程的内存，必须向它发送一个消息，并祈祷它能收到并理解这个消息。
+
+### 并发编程
+
+Erlang 编写并发程序只需要三个基本函数
+
+#### 基本并发函数
+
+* `Pid = spawn(Mod, Func, Args)`：创建一个并行进程来执行 `apply(Mod, Func, Args)`
+
+* `Pid = spawn(Fun)`：创建一个新的并发进程来执行 `FUn()`
+
+* `Pid ! Message`：向 Pid 进程发送消息 Message，消息发送是异步的。`Pid1 ! Pid2 ! ... ! Msg` 意思是把消息 `Msg` 发给所有进程
+
+* `receive ... end`：接收发送给某个进程的消息
+
+  * ```erlang
+    receive
+        Pattern1 [when Guard1] ->
+            Expressions1;
+        Pattern2 [when Guard2] ->
+            Expressions2;
+        ...
+    end
+    ```
+
+
+```erlang
+% Erlang 依赖于 actor并发模型。在 Erlang 编写并发程序的三要素：
+% 创建进程，发送消息，接收消息
+
+% 启动一个新的进程使用`spawn`函数，接收一个函数作为参数
+
+F = fun() -> 2 + 2 end. % #Fun<erl_eval.20.67289768>
+spawn(F). % <0.44.0>
+
+% `spawn` 函数返回一个pid(进程标识符)，你可以使用pid向进程发送消息。
+% 使用 `!` 操作符发送消息。
+%  我们需要在进程内接收消息，要用到 `receive` 机制。
+
+-module(caculateGeometry).
+-compile(export_all).
+caculateAera() ->
+    receive
+      {rectangle, W, H} ->
+        W * H;
+      {circle, R} ->
+        3.14 * R * R;
+      _ ->
+        io:format("We can only caculate area of rectangles or circles.")
+    end.
+
+% 编译这个模块，在 shell 中创建一个进程，并执行 `caculateArea` 函数。
+c(caculateGeometry).
+CaculateAera = spawn(caculateGeometry, caculateAera, []).
+CaculateAera ! {circle, 2}. % 12.56000000000000049738
+
+% shell也是一个进程(process), 你可以使用`self`获取当前 pid
+
+self(). % <0.41.0>
+```
+
