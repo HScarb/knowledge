@@ -610,7 +610,9 @@ rf(todo).
 ```
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160157999.png)
+
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160157692.png)
+
 ---
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202206160159946.png)
 
@@ -1003,6 +1005,530 @@ main(Args) ->
 #### makefile 使编译自动化
 
 ## 并发和分布式程序
+
+### 现实世界中的并发
+
+Erlang进程没有共享内存，每个进程都有它自己的内存。要改变其他某个进程的内存，必须向它发送一个消息，并祈祷它能收到并理解这个消息。
+
+### 并发编程
+
+Erlang 编写并发程序只需要三个基本函数
+
+#### 基本并发函数
+
+* `Pid = spawn(Mod, Func, Args)`：创建一个并行进程来执行 `apply(Mod, Func, Args)`
+
+* `Pid = spawn(Fun)`：创建一个新的并发进程来执行 `FUn()`
+
+* `Pid ! Message`：向 Pid 进程发送消息 Message，消息发送是异步的。`Pid1 ! Pid2 ! ... ! Msg` 意思是把消息 `Msg` 发给所有进程
+
+* `receive ... end`：接收发送给某个进程的消息
+
+  * ```erlang
+    receive
+        Pattern1 [when Guard1] ->
+            Expressions1;
+        Pattern2 [when Guard2] ->
+            Expressions2;
+        ...
+    end
+    ```
+
+每个进程都带有一个进程邮箱，与进程同步创建。收到的消息会被放入该进程的邮箱，程序执行一条接收语句时才会读取邮箱。
+
+#### 客户端-服务器
+
+```erlang
+% Erlang 依赖于 actor并发模型。在 Erlang 编写并发程序的三要素：
+% 创建进程，发送消息，接收消息
+
+% 启动一个新的进程使用`spawn`函数，接收一个函数作为参数
+
+F = fun() -> 2 + 2 end. % #Fun<erl_eval.20.67289768>
+spawn(F). % <0.44.0>
+
+% `spawn` 函数返回一个pid(进程标识符)，你可以使用pid向进程发送消息。
+% 使用 `!` 操作符发送消息。
+%  我们需要在进程内接收消息，要用到 `receive` 机制。
+
+-module(caculateGeometry).
+-compile(export_all).
+caculateAera() ->
+    receive
+      {rectangle, W, H} ->
+        W * H;
+      {circle, R} ->
+        3.14 * R * R;
+      _ ->
+        io:format("We can only caculate area of rectangles or circles.")
+    end.
+
+% 编译这个模块，在 shell 中创建一个进程，并执行 `caculateArea` 函数。
+c(caculateGeometry).
+CaculateAera = spawn(caculateGeometry, caculateAera, []).
+CaculateAera ! {circle, 2}. % 12.56000000000000049738
+
+% shell也是一个进程(process), 你可以使用`self`获取当前 pid
+
+self(). % <0.41.0>
+```
+
+#### 进程很轻巧
+
+```erlang
+% 查看允许的最大进程数量
+> erlang:system_info(processlimit).
+262144
+```
+
+#### 带超时的接收
+
+为避免接收语句因为消息不来而一直等待，可以给接收语句增加一个超时设置，设置进程等待接收消息的最长时间。
+
+```erlang
+receive
+    Pattern1 [when Guard1] ->
+        Expressions1;
+    Pattern2 [when Guard2] ->
+        Expressions2;
+    ...
+after Time ->
+    Expressions
+end
+```
+
+#### 选择性接收
+
+`receive` 基本函数从进程邮箱中提取消息，做模式匹配，把未匹配的消息加入队列供以后处理，并管理超时。
+
+#### 注册进程
+
+一般创建进程时，只有父进程知道子进程的 PID。使用注册进程的方法，可以公布进程标识符，让任何进程都能与该进程通信。
+
+```erlang
+% 用 AnAtom 作为名称来注册进程 Pid
+register(AnAtom, Pid)
+% 移除与 AnAtom 关联的所有注册信息
+unregister(AnAtom)
+% 检查 AnAtom 是否已被注册
+whereis(AnAtom) -> Pid | undefined
+% 返回包含系统里所有注册进程的列表
+registered() -> [AnAtom::atom()]
+```
+
+#### 尾递归的说明
+
+尾递归：收到消息进行处理之后立即再次调用 `loop()`
+
+```erlang
+% 并发程序模板
+% 接收并打印出任何发给它的消息
+-module(ctemplate).
+-compile(export_all).
+
+start() ->
+  spawn(?MODULE, loop, []).
+
+rpc(Pid, Request) ->
+  Pid ! {self(), Request},
+  receive
+    {Pid, Response} ->
+      Response
+  end.
+
+loop(X) ->
+  receive
+    Any ->
+      io:format("Received:~p~n", [Any]),
+      loop(X)
+  end.
+```
+
+### 分布式编程
+
+#### 两种分布式模型
+
+* 分布式 Erlang
+
+  程序在 Erlang 节点（node）上运行，节点是一个独立的 Erlang 系统，包含一个自带地址空间和进程组的完整虚拟机。
+
+  通常运行在数据同一个局域网的集群上，并受防火墙保护。
+
+* 基于套接字的分布式模型
+
+  用 TCP/IP 套接字来编写运行在不可信环境中的分布式应用程序。不如分布式 Erlang 那样强大，但是更安全。
+
+#### 编写一个分布式程序
+
+分布式应用程序编写顺序
+
+1. 在常规非分布式会话里编写和测试程序
+2. 在运行于同一台计算机上的两个不同 Erlang 节点中测试程序
+3. 在运行于两台物理隔离计算机上的两个不同 Erlang 节点里测试程序。
+
+## 编程库与框架
+
+### 接口技术
+
+#### Erlang 如何与外部程序通信
+
+Erlang 通过*端口*对象与外部程序通信。端口的行为就像一个 Erlang 进程。
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202207171636801.png)
+
+`-spec open_port(PortName, [Opt]) -> Port` 可以创建端口
+
+```erlang
+% 向端口发送Data
+Port ! {PicC, {command, Data}}
+% 把相连进程的 PID 从 PicC 改为 Pid1
+Port ! {PicC, {connect, Pid1}}
+% 关闭端口
+Port ! {Pid, close}
+```
+
+#### 用端口建立外部 C 程序接口
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202207171642507.png)
+
+#### 在 Erlang 里调用 shell 脚本
+
+```erlang
+% 运行字符串的命令并捕捉结果
+os:cmd("ifconfig").
+```
+
+### 文件编程
+
+### 套接字编程
+
+### 用 WebSocket 和 Erlang 进行浏览
+
+### 用 ETS 和 DETS 存储数据
+
+ets 和 dets 是两个系统模块，用来高效存储海量的 Erlang 数据。它们都提供大型的键-值查询表。可以被多个进程共享。
+
+* ETS（Erlang Term Storage）：常驻内存，查找时间是恒定的。易失。没有垃圾收集机制，不会有垃圾收集的负担。
+* DETS（Disk ETS）：使用磁盘存储，速度慢于 ETS，内存占用也小很多。非易失。打开时会进行一致性检查，损坏会尝试修复，可能会花很长时间；表中最后一项可能是损坏的会丢失。
+
+#### 表的类型
+
+ETS 和 DETS 表保存的是*元组*。元组里的某一个元素（默认是第一个）被称为该表的键。
+
+* 异键表（set）：表里所有的键都是唯一的  
+* 有序异键（ordered set）：元组会被排序
+* 同键表（bag）：允许多个元素拥有相同的键  
+* 副本同键（duplicate bag）：可以有多个元组拥有相同的键，而且在同一张表里可以存在多个相同的元组 
+
+```erlang
+-module(ets_test).
+%% API
+-export([start/0]).
+
+start() ->
+  lists:foreach(fun test_ets/1, [set, ordered_set, bag, duplicate_bag]).
+
+test_ets(Mode) ->
+  TableId = ets:new(test, [Mode]),
+  ets:insert(TableId, {a, 1}),
+  ets:insert(TableId, {b, 2}),
+  ets:insert(TableId, {a, 1}),
+  ets:insert(TableId, {a, 3}),
+  List = ets:tab2list(TableId),
+  io:format("~-13w => ~p~n", [Mode, List]),
+  ets:delete(TableId).
+```
+
+```erlang
+λ erl
+Eshell V12.3.2.1  (abort with ^G)
+1> c(ets_test).
+{ok,ets_test}
+2> ets_test:start().
+set           => [{b,2},{a,3}]
+ordered_set   => [{a,3},{b,2}]
+bag           => [{b,2},{a,1},{a,3}]
+duplicate_bag => [{b,2},{a,1},{a,1},{a,3}]
+ok
+```
+
+#### 影响 ETS 表效率的因素
+
+ETS 表在内部是用散列表表示的，（ordered set）用平衡二叉树表示。
+
+#### 保存元组到磁盘
+
+### Mnesia：Erlang 数据库
+
+Mnesia是一种用Erlang编写的数据库。
+
+Mnesia的速度极快，可以保存任何类型的Erlang数据结构。它还是高度可定制的。数据表既可以保存在内存里（为了速度），也可以保存在磁盘上（为了持久性）。表还可以在不同机器之间进行复制，从而实现容错行为。
+
+#### 创建初始数据库
+
+```erlang
+$ erl
+% mnesia:create_schema(NodeList) 会在 Erlang 节点列表的所有节点上都初始化一个新的 Mnesia 数据库，会初始化并且创建一个目录结构来保存
+1> mnesia:create_schema([node()]).
+ok
+2> init:stop().
+ok
+$ ls
+Mnesia.nonode@nohost
+
+# 创建名为 joe 的 erlang 节点
+$ erl -sname joe
+
+# 启动 erlang 时指向一个特定的数据库
+$ erl -mnesia dir '"/home/joe/some/path/to/Mnesia.company"'
+```
+
+#### 数据库查询
+
+```erlang
+-module(test_mnesia).
+-import(lists, [foreach/2]).
+-compile(export_all).
+
+%% IMPORTANT: The next line must be included
+%%            if we want to call qlc:q(...)
+-include_lib("stdlib/include/qlc.hrl").
+
+% Mnesia 里的表是一个包含若干行的**异键或同键表**，其中每一行都是**一个 Erlang 记录**。要在 Mnesia 里表示这些表，需要一些**记录定义**来对表里的行进行定义。
+-record(shop, {item, quantity, cost}).
+-record(cost, {name, price}).
+-record(design, {id, plan}).
+
+%% 初始化数据表
+do_this_once() ->
+    mnesia:create_schema([node()]),
+    mnesia:start(),
+    mnesia:create_table(shop,   [{attributes, record_info(fields, shop)}]),
+    mnesia:create_table(cost,   [{attributes, record_info(fields, cost)}]),
+    mnesia:create_table(design, [{attributes, record_info(fields, design)}]),
+    mnesia:stop().
+
+start() ->
+    mnesia:start(),
+    mnesia:wait_for_tables([shop,cost,design], 20000).
+
+%% SQL equivalent
+%%  SELECT * FROM shop;
+demo(select_shop) ->
+    do(qlc:q([X || X <- mnesia:table(shop)]));
+
+
+%% SQL equivalent
+%%  SELECT item, quantity FROM shop;
+demo(select_some) ->
+    do(qlc:q([{X#shop.item, X#shop.quantity} || X <- mnesia:table(shop)]));
+ 
+
+%% SQL equivalent
+%%   SELECT shop.item FROM shop
+%%   WHERE  shop.quantity < 250;
+demo(reorder) ->
+    do(qlc:q([X#shop.item || X <- mnesia:table(shop),
+			     X#shop.quantity < 250
+				]));
+%% SQL equivalent
+%%   SELECT shop.item
+%%   FROM shop, cost 
+%%   WHERE shop.item = cost.name 
+%%     AND cost.price < 2
+%%     AND shop.quantity < 250
+demo(join) ->
+    do(qlc:q([X#shop.item || X <- mnesia:table(shop),
+			     X#shop.quantity < 250,
+			     Y <- mnesia:table(cost),
+			     X#shop.item =:= Y#cost.name,
+			     Y#cost.price < 2
+				])).
+
+do(Q) ->
+    F = fun() -> qlc:e(Q) end,
+    {atomic, Val} = mnesia:transaction(F),
+    Val.
+
+example_tables() ->
+    [%% The shop table
+     {shop, apple,   20,   2.3},
+     {shop, orange,  100,  3.8},
+     {shop, pear,    200,  3.6},
+     {shop, banana,  420,  4.5},
+     {shop, potato,  2456, 1.2},
+     %% The cost table
+     {cost, apple,   1.5},
+     {cost, orange,  2.4},
+     {cost, pear,    2.2},
+     {cost, banana,  1.5},
+     {cost, potato,  0.6}
+    ].
+
+add_shop_item(Name, Quantity, Cost) ->
+    Row = #shop{item=Name, quantity=Quantity, cost=Cost},
+    F = fun() ->
+		mnesia:write(Row)
+	end,
+    mnesia:transaction(F).
+
+remove_shop_item(Item) ->
+    Oid = {shop, Item},
+    F = fun() ->
+		mnesia:delete(Oid)
+	end,
+    mnesia:transaction(F).
+
+farmer(Nwant) ->
+    %% Nwant = Number of oranges the farmer wants to buy
+    F = fun() ->
+		%% find the number of apples
+		[Apple] = mnesia:read({shop,apple}),
+		Napples = Apple#shop.quantity,
+		Apple1  = Apple#shop{quantity = Napples + 2*Nwant},
+		%% update the database
+		mnesia:write(Apple1),
+		%% find the number of oranges
+		[Orange] = mnesia:read({shop,orange}),
+		NOranges = Orange#shop.quantity,
+		if 
+		    NOranges >= Nwant ->
+			N1 =  NOranges - Nwant,
+			Orange1 = Orange#shop{quantity=N1},
+			%% update the database
+			mnesia:write(Orange1);
+		    true ->
+			%% Oops -- not enough oranges
+			mnesia:abort(oranges)
+		end
+	end,
+    mnesia:transaction(F).
+
+reset_tables() ->
+    mnesia:clear_table(shop),
+    mnesia:clear_table(cost),
+    F = fun() ->
+		foreach(fun mnesia:write/1, example_tables())
+	end,
+    mnesia:transaction(F).
+
+add_plans() ->
+    D1 = #design{id   = {joe,1},
+		 plan = {circle,10}},
+    D2 = #design{id   = fred, 
+		 plan = {rectangle,10,5}},
+    D3 = #design{id   = {jane,{house,23}},
+		 plan = {house,
+			 [{floor,1,
+			   [{doors,3},
+			    {windows,12},
+			    {rooms,5}]},
+			  {floor,2,
+			   [{doors,2},
+			    {rooms,4},
+			    {windows,15}]}]}},
+    F = fun() -> 
+		mnesia:write(D1),
+		mnesia:write(D2),
+		mnesia:write(D3)
+	end,
+    mnesia:transaction(F).
+
+get_plan(PlanId) ->
+    F = fun() -> mnesia:read({design, PlanId}) end,
+    mnesia:transaction(F).
+```
+
+### 性能分析、调试与跟踪
+
+#### Erlang 代码的性能分析工具
+
+* cprof 统计各个函数被调用的次数。它是一个**轻量级**的性能分析器，在活动系统上运行它会增加 5%～ 10% 的系统负载。
+* fprof显示调用和被调用函数的时间，结果会输出到一个文件。它适用于实验室或模拟系统里的大型系统性能分析，并会**显著**增加系统负载。
+* eprof 测量 Erlang 程序是如何使用时间的。它是 fprof 的前身，适用于**小规模**的性能分析。  
+
+```erlang
+(scarb@DESKTOP-72654G4)5> cprof:start().
+9795
+(scarb@DESKTOP-72654G4)6> shout:start().
+** exception error: undefined function shout:start/0
+(scarb@DESKTOP-72654G4)7> mnesia:stop().
+stopped
+(scarb@DESKTOP-72654G4)8> cprof:pause().
+9795
+(scarb@DESKTOP-72654G4)9> cprof:analyse(mnesia).
+{mnesia,1,[{{mnesia,stop,0},1}]}
+```
+
+#### 运行时诊断
+
+```erlang
+deliberate_error(A) ->
+    bad_function(A, 12),
+    lists:reverse(A).
+
+bad_function(A, _) ->
+    {ok, Bin} = file:open({abc,123}, A),
+    binary_to_list(Bin).
+```
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202207172116236.png)
+
+错误消息之后是栈跟踪信息。它以发生错误的函数名开头，后面是当前函数完成后将会返回的各个函数清单（包括函数名、模块名和行号）。由此可知，错误发生在 `lib_misc:bad_function/2` 里，而此函数将会返回到 `lib_misc:deliberate_error/1`，以此类推。  
+
+#### 调试方法
+
+##### io:format 调试
+
+给程序添加打印语句是最常见的调试形式。可以简单地在程序的关键位置添加 `io:format(...)` 语句来打印出感兴趣的变量值。
+
+调试并行程序时，一种好的做法是在<u>发送消息到别的进程之前先把它打印出来</u>，<u>收到消息之后也要立即打印</u>。  
+
+##### 转储至文件
+
+```erlang
+dump(File, Term) ->
+    Out = File ++ ".tmp",
+    io:format("** dumping to ~s~n",[Out]),
+    {ok, S} = file:open(Out, [write]),
+    io:format(S, "~p.~n",[Term]), 
+    file:close(S).
+```
+
+#### Erlang 调试器
+
+#### 跟踪消息与进程执行
+
+* erlang:trace(PidSpec, How, FlagList)
+  它会启动跟踪。`PidSpec` 告诉系统要跟踪什么进程，`How` 是一个开启或关闭跟踪的布尔值，`FlagList` 指定了要跟踪的事件（比如，可以跟踪所有的函数调用，跟踪所有正在发送的消息，跟踪垃圾收集何时进行，等等）。
+  一旦调用了 `erlang:trace/3` 这个内置函数，调用它的进程就会在跟踪事件发生时收到跟踪消息。跟踪事件本身是通过调用 `erlang:trace_pattern/3`确定的。  
+
+* erlang:trace_pattern(MFA, MatchSpec, FlagList)
+
+  它用于设置一个跟踪模式。如果模式匹配，请求的操作就会执行。这里的MFA是一个{Module, Function, Args}元组，指定要对哪些代码应用跟踪模式。 MatchSpec是一个模式，会在每次进入MFA指定的函数时进行测试，而FlagList规定了跟踪条件满足时要
+  做什么。  
+
+可以用库模块 `dbg` 来执行与之前相同的跟踪。
+
+```erlang
+fib(0) -> 1;
+fib(1) -> 1;
+fib(N) -> fib(N - 1) + fib(N - 2).
+
+test1() ->
+  dbg:tracer(),
+  dbg:tpl(tracer_test, fib, '_',
+    dbg:fun2ms(fun(_) -> return_trace() end)),
+  dbg:p(all, [c]),
+  tracer_test:fib(4).
+```
+
+### OTP 介绍
+
+Open Telecom Platform（开放电信平台），它是一个应用程序操作系统，包含了一组库和实现方式，可以构建大规模、容错和分布式的应用程序。它由瑞典电信公司爱立信开发，在爱立信内部用于构建容错式系统。标准的Erlang分发套装包含OTP库。  
+
+OTP 包含了许多强大的工具，例如一个完整的 Web 服务器，一个FTP服务器和一个 CORBAORB  等。
+
 
 ---
 

@@ -10,3 +10,5 @@
 
 [RabbitMQ 存储机制](20220610-rabbitmq-store.md)
 
+[RabbitMQ 3.8 特性聚焦：仲裁队列（Quorum Queues）](20220714-rabbitmq-quorum-queues-feature-focus.md)
+
