@@ -208,6 +208,8 @@ $ vim docker-compose/docker-compose.yml
 
 ### Docker 启动 DLedger 模式的 RocketMQ
 
+用 DLedger 模式前保证有足够的可用内存（8G 以上）
+
 也是有两种方法，用本地构建的镜像和 Docker Hub 中官方上传的镜像。如果用本地打包的镜像，直接运行如下命令
 
 ```bash
@@ -220,9 +222,37 @@ $ sh play-docker-dledger.sh
 ```bash
 $ vim play-docker-dledger.sh
 :%s/apacherocketmq/apache/g
+$ sh play-docker-dledger.sh
 ```
 
-然后再运行即可
+但是我运行时三个 Broker 都未启动成功，查看 Broker 日志，发现 `broker.conf` 文件未找到
+
+```bash
+ubuntu@VM-4-14-ubuntu:~/workspace/rocketmq/rocketmq-docker/stages/4.9.4/templates$ docker ps
+CONTAINER ID   IMAGE                   COMMAND                  CREATED         STATUS         PORTS                                                                                                                                NAMES
+1ae8a853012b   apache/rocketmq:4.9.4   "sh mqbroker -c ../c…"   2 seconds ago   Up 1 second    9876/tcp, 10909/tcp, 0.0.0.0:30929->30929/tcp, :::30929->30929/tcp, 10911-10912/tcp, 0.0.0.0:30931->30931/tcp, :::30931->30931/tcp   rmqbroker2
+71da5cd67513   apache/rocketmq:4.9.4   "sh mqnamesrv"           4 seconds ago   Up 3 seconds   10909/tcp, 0.0.0.0:9876->9876/tcp, :::9876->9876/tcp, 10911-10912/tcp                                                                rmqnamesrv
+0e80d1d53112   redis:6.2               "docker-entrypoint.s…"   3 months ago    Up 3 months    0.0.0.0:46379->6379/tcp, :::46379->6379/tcp                                                                                          redis-redis-1
+ubuntu@VM-4-14-ubuntu:~/workspace/rocketmq/rocketmq-docker/stages/4.9.4/templates$ docker ps -a
+CONTAINER ID   IMAGE                                     COMMAND                  CREATED          STATUS                       PORTS                                                                   NAMES
+1ae8a853012b   apache/rocketmq:4.9.4                     "sh mqbroker -c ../c…"   8 seconds ago    Exited (255) 6 seconds ago                                                                           rmqbroker2
+b959cf8b6542   apache/rocketmq:4.9.4                     "sh mqbroker -c ../c…"   9 seconds ago    Exited (255) 6 seconds ago                                                                           rmqbroker1
+919ce578e6db   apache/rocketmq:4.9.4                     "sh mqbroker -c ../c…"   10 seconds ago   Exited (255) 7 seconds ago                                                                           rmqbroker
+71da5cd67513   apache/rocketmq:4.9.4                     "sh mqnamesrv"           10 seconds ago   Up 9 seconds                 10909/tcp, 0.0.0.0:9876->9876/tcp, :::9876->9876/tcp, 10911-10912/tcp   rmqnamesrv
+
+ubuntu@VM-4-14-ubuntu:~/workspace/rocketmq/rocketmq-docker/stages/4.9.4/templates$ docker logs -t rmqbroker --tail=100
+2022-07-27T15:58:11.218761998Z java.io.FileNotFoundException: ../conf/dledger/broker.conf (No such file or directory)
+2022-07-27T15:58:11.218878131Z  at java.io.FileInputStream.open0(Native Method)
+2022-07-27T15:58:11.218887204Z  at java.io.FileInputStream.open(FileInputStream.java:195)
+2022-07-27T15:58:11.218891884Z  at java.io.FileInputStream.<init>(FileInputStream.java:138)
+2022-07-27T15:58:11.218953791Z  at java.io.FileInputStream.<init>(FileInputStream.java:93)
+2022-07-27T15:58:11.218960481Z  at org.apache.rocketmq.broker.BrokerStartup.createBrokerController(BrokerStartup.java:119)
+2022-07-27T15:58:11.218965349Z  at org.apache.rocketmq.broker.BrokerStartup.main(BrokerStartup.java:57)
+```
+
+于是想办法修改 `play-docker-dledger.sh` 中的 Broker 配置文件路径，改成 `/opt/rocketmq-4.9.4/conf/dledger/broker.conf`，然后启动成功
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202207280025262.png)
 
 ### Docker 启动单节点 RocketMQ
 
