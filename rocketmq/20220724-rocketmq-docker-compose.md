@@ -214,7 +214,7 @@ $ vim docker-compose/docker-compose.yml
 
 ```bash
 $ cd stages/4.9.4/templates
-$ sh play-docker-dledger.sh
+$ ./play-docker-dledger.sh
 ```
 
 如果要用 Docker Hub 中的镜像，则需要修改 `play-docker-dledger.sh` 中的镜像地址
@@ -222,7 +222,7 @@ $ sh play-docker-dledger.sh
 ```bash
 $ vim play-docker-dledger.sh
 :%s/apacherocketmq/apache/g
-$ sh play-docker-dledger.sh
+$ ./play-docker-dledger.sh
 ```
 
 但是我运行时三个 Broker 都未启动成功，查看 Broker 日志，发现 `broker.conf` 文件未找到
@@ -253,6 +253,50 @@ ubuntu@VM-4-14-ubuntu:~/workspace/rocketmq/rocketmq-docker/stages/4.9.4/template
 于是想办法修改 `play-docker-dledger.sh` 中的 Broker 配置文件路径，改成 `/opt/rocketmq-4.9.4/conf/dledger/broker.conf`，然后启动成功
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202207280025262.png)
+
+#### 修改内存配置
+
+DLedger 模式默认配置下，每个节点会占用 2G 内存。如果是内存较小的机器则可以通过定义环境变量修改内存占用。
+
+RocketMQ 使用 `runbroker.sh` 启动，其中启动参数设置脚本如下：
+
+```bash
+# runbroker.sh
+JAVA_OPT="${JAVA_OPT} -server -Xms8g -Xmx8g"
+choose_gc_options
+JAVA_OPT="${JAVA_OPT} -XX:-OmitStackTraceInFastThrow"
+JAVA_OPT="${JAVA_OPT} -XX:+AlwaysPreTouch"
+JAVA_OPT="${JAVA_OPT} -XX:MaxDirectMemorySize=15g"
+JAVA_OPT="${JAVA_OPT} -XX:-UseLargePages -XX:-UseBiasedLocking"
+#JAVA_OPT="${JAVA_OPT} -Xdebug -Xrunjdwp:transport=dt_socket,address=9555,server=y,suspend=n"
+JAVA_OPT="${JAVA_OPT} ${JAVA_OPT_EXT}"
+JAVA_OPT="${JAVA_OPT} -cp ${CLASSPATH}"
+```
+
+这个脚本预留了定义额外的 Java 启动参数的环境变量，即 `JAVA_OPT_EXT`，于是将 `play-docker-dledger.sh` 文件做如下修改，添加 `-e "JAVA_OPT_EXT=-server -Xms128m -Xmx128m -Xmn128m"`（注意，这么小的内存无法生产消费消息，仅仅为了启动 Broker。需要同时改动 broker 配置中的 commitlog、consumequeue、indexfile 大小）
+
+```bash
+docker run --net dledger-br --ip 172.18.0.12 -d -p 30911:30911 -p 30909:30909 -v `pwd`/data/broker0/logs:/home/rocketmq/logs -v `pwd`/data/broker0/store:/home/rocketmq/store -v `pwd`/data/broker0/conf/dledger:/opt/rocketmq-4.9.4/conf/dledger --name rmqbroker --link rmqnamesrv:namesrv -e "NAMESRV_ADDR=namesrv:9876" -e "JAVA_OPT_EXT=-server -Xms128m -Xmx128m -Xmn128m" apache/rocketmq:4.9.4 sh mqbroker -c /opt/rocketmq-4.9.4/conf/dledger/broker.conf
+docker run --net dledger-br --ip 172.18.0.13 -d -p 30921:30921 -p 30919:30919 -v `pwd`/data/broker1/logs:/home/rocketmq/logs -v `pwd`/data/broker1/store:/home/rocketmq/store -v `pwd`/data/broker1/conf/dledger:/opt/rocketmq-4.9.4/conf/dledger --name rmqbroker1 --link rmqnamesrv:namesrv -e "NAMESRV_ADDR=namesrv:9876" -e "JAVA_OPT_EXT=-server -Xms128m -Xmx128m -Xmn128m" apache/rocketmq:4.9.4 sh mqbroker -c /opt/rocketmq-4.9.4/conf/dledger/broker.conf
+docker run --net dledger-br --ip 172.18.0.14 -d -p 30931:30931 -p 30929:30929 -v `pwd`/data/broker2/logs:/home/rocketmq/logs -v `pwd`/data/broker2/store:/home/rocketmq/store -v `pwd`/data/broker2/conf/dledger:/opt/rocketmq-4.9.4/conf/dledger --name rmqbroker2 --link rmqnamesrv:namesrv -e "NAMESRV_ADDR=namesrv:9876" -e "JAVA_OPT_EXT=-server -Xms128m -Xmx128m -Xmn128m" apache/rocketmq:4.9.4 sh mqbroker -c /opt/rocketmq-4.9.4/conf/dledger/broker.conf
+```
+
+#### DLedger 与 Dashboard 同时启动
+
+需要修改 `play-docker-dleger.sh`，在 broker 运行的脚本下面添加 dashboard 的 docker 运行脚本，并与 broker、nameserver 用同一个网络
+
+```bash
+# Start brokers
+# ...
+# Start dashboard
+docker run --net dledger-br -d -p 48080:8080 --link rmqnamesrv:namesrv -e "NAMESRV_ADDR=namesrv:9876" --name rmq-dledger-dashboard apacherocketmq/rocketmq-dashboard:1.0.0
+```
+
+然后运行 `./play-docker-dledger.sh`，可以访问 `48080` 端口进入 Dashboard
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202208020138914.png)
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202208020138935.png)
 
 ### Docker 启动单节点 RocketMQ
 
