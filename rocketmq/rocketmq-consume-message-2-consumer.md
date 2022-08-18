@@ -8,19 +8,13 @@
 
 先看一下 RocketMQ 客户端代码中消费者相关的类图。
 
-![](../assets/rocketmq-consume-message/rocketmq-consumer-class-fields.drawio.png)
+![](../assets/rocketmq-consume-message/rocketmq-consumer-class.drawio.png)
 
-其中 `DefaultMQPullConsumer` 和 `DefaultMQPushConsumer` 就是我们实际消费中需要新建的消费者对象。它们实现了消费者接口，扩展了客户端配置类。
+其中 `DefaultMQPullConsumer` 和 `DefaultMQPushConsumer` 就是我们实际消费中需要新建的消费者对象。它们分别实现了消费者接口，扩展了客户端配置类。
 
 新建 `DefaultXXXXConsumer` 对象时会在内部一个创建 `DefaultMQXXXXConsumerImpl` 对象。这里使用了代理模式，`DefaultXXXXConsumer` 对象只是一个壳，内部的大部分方法都通过调用代理 `DefaultMQXXXXConsumerImpl` 来执行。
 
-`DefaultMQXXXXConsumerImpl` 实现类中包含了：
-
-* MQClientInstnace：客户端实例，每个客户端进程一般只有一个这玩意。它的用处很多，很多操作最终都是调用它来做的。
-  * 保存路由信息
-  * 保存生产者消费者组信息
-  * 向 Broker 发送请求
-  * 启动重平衡
+`DefaultMQXXXXConsumerImpl` 实现类中包含了客户端实例 `MQClientInstnace` ，每个客户端进程一般只有一个这玩意。它的用处很多，比如保存路由和客户端信息，向 Broker 发送请求等。
 
 ### 2.2 消费者客户端启动
 
@@ -47,7 +41,7 @@
 
 #### 3.1.1 整体类图
 
-![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202208152245917.png)
+![](../assets/rocketmq-consume-message/rocketmq-consumer-class-fields.drawio.png)
 
 ---
 
@@ -102,15 +96,22 @@ RocketMQ 的拉 & 推模式消费者接口就定义了这些方法，先来看�
 
  `DefaultMQXXXXConsumer` 是拉消费者接口 `MQXXXXConsumer` 的默认实现。这里用到了代理模式，将具体的方法实现都实现在 `DefaultMQXXXXConsumerImpl` 中，`DefaultMQXXXXConsumer` 保存了一个 `DefaultMQXXXXConsumerImpl` 的代理。
 
-`DefaultMQXXXXConsumerImpl` 中有一个客户端实例的引用 `MQClientInstance mqClientFactory`，用来与 Broker 通信、保存元数据。
-
 `DefaultMQXXXXConsumerImpl` 实现了 `MQConsumerInner` 接口，提供了消费者实现的一些公用方法。
 
-#### 3.1.5 拉模式消费者
+`DefaultMQXXXXConsumerImpl` 中有一个客户端实例的引用 `MQClientInstance mqClientFactory`，用来与 Broker 通信、保存元数据。
 
-拉模式消费者消费的流程主要是这几步：拉消息、消费、上报进度，当然还包括失败处理。
+MQClientInstnace：客户端实例，每个客户端进程一般只有一个这玩意。它的用处很多，很多操作最终都是调用它来做的。
 
+* 保存路由信息
+* 保存生产者消费者组信息
+* 向 Broker 发送请求
+* 启动重平衡
 
+#### 3.1.5 推模式消费者
+
+拉模式消费者需要手动拉取消息进行消费，平平无奇。推模式消费者自动监听推送过来的消息并进行消费，着重讲解。
+
+![](../assets/rocketmq-consume-message/rocketmq-consume-message-service-class.drawio.png)
 
 ### 3.2 消费者启动
 
