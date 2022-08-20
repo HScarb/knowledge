@@ -111,7 +111,25 @@ MQClientInstnace：客户端实例，每个客户端进程一般只有一个这�
 
 拉模式消费者需要手动拉取消息进行消费，平平无奇。推模式消费者自动监听推送过来的消息并进行消费，着重讲解。
 
+推模式消费者实际内部也是通过拉取消息的方式进行消息拉取，只不过封装了订阅和监听器这样的对外接口，让用户在使用时感觉像 Broker 主动推送消息到消费者。
+
+在拉消费者背后，有一个线程默默主动拉取消息，才能将拉转换为推，它就是 `PullMessageService`。此外，推消费者还支持并发消费和顺序消费，RocketMQ 定义了 `ConsumeMessageService` 接口来执行消息消费，`ConsumeMessageConcurrentlyService` 和  `ConsumeMessageOrderlyService` 分别是并发消费和顺序消费的实现。它们内部都定义了一个消费线程池 `consumeExecutor` 来执行最终的消息消费逻辑。而用户真正编写的只有最终的消费逻辑，即实现 `MessageListener` 接口的 `consumeMessage` 方法。
+
+推模式消费者实现相关的类图如下所示：
+
 ![](../assets/rocketmq-consume-message/rocketmq-consume-message-service-class.drawio.png)
+
+在图中，展示了消息消费整个流程的调用关系。在系列后面的文章中会详细讲解。
+
+1. 客户端实例中的重平衡服务进行重平衡，生成一个 `PullRequest` 并调用拉消费者实现类的 `executePullRequestImmediately` 方法
+2. `DefaultMQPushConsumerImpl` 调用 `PullMessageService` 线程的 `executePullRequestImmediately` 方法，
+3. 该方法将 `PullRequest` 放入待执行的拉取请求队列
+4. `PullMessageService` 线程阻塞等待请求队列中的拉取请求
+5. 收到拉去请求 `PullRequest` 后就执行拉取消息拉取方法 `pullMessage` 从 Broker 拉取消息，拉取后执行消费消息逻辑
+6. 消费消息逻辑会调用 `ConsumeMessageService` 的 `submitConsumeRequest` 方法
+7. 该方法将消费消息的请求提交到消费线程池 `consumeExecutor`
+8. 消费线程池执行真正的消息消费逻辑，调用 `MessageListener` 接口的 `consumeMessage` 方法
+9. 拉取一批消息成功后，将拉取请求 `PullRequest` 的拉取偏移量更新后再次调用 `executePullRequestImmediately` 方法，放入拉取队列，重新拉取
 
 ### 3.2 消费者启动
 
