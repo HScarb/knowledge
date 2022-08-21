@@ -107,7 +107,7 @@ MQClientInstnace：客户端实例，每个客户端进程一般只有一个这�
 * 向 Broker 发送请求
 * 启动重平衡
 
-#### 3.1.5 推模式消费者
+#### 3.1.5 推模式消费者实现
 
 拉模式消费者需要手动拉取消息进行消费，平平无奇。推模式消费者自动监听推送过来的消息并进行消费，着重讲解。
 
@@ -133,7 +133,40 @@ MQClientInstnace：客户端实例，每个客户端进程一般只有一个这�
 
 ### 3.2 消费者启动
 
+由于拉模式和推模式消费者的启动流程大致相同，所以只介绍推模式消费者的启动流程。
 
+![](../assets/rocketmq-consume-message/rocketmq-push-consumer-startup.drawio.png)
+
+`DefaultMQPushConsumer` 的启动方法内部实际是调用其代理类 `DefaultMQPushConsumerImpl` 的启动方法，他本身的启动方法并没有什么逻辑。
+
+`DefaultMQPushConsumerImpl` 的启动方法执行的动作如下：
+
+1. 检查是否是刚创建状态，如果是才继续走启动流程
+2. 检查消费者配置信息是否合法
+3. 将用户的 Topic 订阅信息和重试 Topic 的订阅信息添加到 `rebalanceImpl` 中的 Map 中
+4. 创建和初始化一些对象
+   1. 创建或获取已经创建的客户端实例 `MQClientInstance`
+   2. 初始化消费者的重平衡实现 `RebalanceImpl`
+   3. 创建拉取消息接口调用包装类 `PullApiWrapper`
+   4. 注册消息过滤钩子函数列表（如果有的话）
+5. 初始化消费进度
+   * 广播模式，消费进度保存在消费者本地 `LocalFileOffsetStore`
+   * 集群模式，消费进度保存在 Broker `RemoteBrokerOffsetStore`
+6. 初始化消息消费服务，消费服务内部维护一个线程池，负责消息消费
+7. 将消费者注册到客户端实例对象
+8. 启动客户端实例对象
+9. 从 Name server 更新 Topic 路由信息（如果路由信息有变化）
+10. 将客户端的信息（ID、生产者、消费者信息）上报给 Broker
+11. 唤醒重平衡线程 `RebalanceService` 立即执行重平衡
+
+客户端实例 `MQClientInstance` 的启动流程如下：
+
+1. 更新 Namesrv 地址
+2. 启动通信模块 `MQClientAPIImpl`
+3. 启动定时任务（从 Namesrv 拉取路由、向 Broker 发送心跳等）
+4. 启动拉取消息服务 `PullMessageService`
+5. 启动重平衡线程 `RebalanceService`
+6. 启动默认生产者（用于将消费失败的消息重新生产到 Broker）
 
 ## 4. 源码解析
 
