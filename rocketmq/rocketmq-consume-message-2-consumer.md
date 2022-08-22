@@ -1,4 +1,4 @@
-# RocketMQ 消息消费（2）客户端设计和启动流程详解 & 源码解析
+# RocketMQ 消息消费（2）客户端设计和启动流 程详解 & 源码解析
 
 ## 1. 背景
 
@@ -158,6 +158,7 @@ MQClientInstnace：客户端实例，每个客户端进程一般只有一个这�
 9. 从 Name server 更新 Topic 路由信息（如果路由信息有变化）
 10. 将客户端的信息（ID、生产者、消费者信息）上报给 Broker
 11. 唤醒重平衡线程 `RebalanceService` 立即执行重平衡
+12. 重平衡后调用拉取消息方法，生成拉取请求 `PullRequest` 并放入 `PullMessageService`，开始消费流程
 
 客户端实例 `MQClientInstance` 的启动流程如下：
 
@@ -169,6 +170,159 @@ MQClientInstnace：客户端实例，每个客户端进程一般只有一个这�
 6. 启动默认生产者（用于将消费失败的消息重新生产到 Broker）
 
 ## 4. 源码解析
+
+### 4.1 `DefaultMQProducerImpl` 启动
+
+```java
+// DefaultMQProducerImpl
+/**
+ * Push 消费者启动
+ *
+ * @throws MQClientException
+ */
+public synchronized void start() throws MQClientException {
+    switch (this.serviceState) {
+            // 检查消费者状态。只有第一次启动才执行，如果二次调用 start 方法会报错
+        case CREATE_JUST:
+            log.info("the consumer [{}] start beginning. messageModel={}, isUnitMode={}", this.defaultMQPushConsumer.getConsumerGroup(),
+                     this.defaultMQPushConsumer.getMessageModel(), this.defaultMQPushConsumer.isUnitMode());
+            this.serviceState = ServiceState.START_FAILED;
+
+            // 检查消费者配置是否合法
+            this.checkConfig();
+
+            // 将用户的 Topic 订阅信息和重试 Topic 的订阅信息添加到 RebalanceImpl 的容器中
+            this.copySubscription();
+
+            if (this.defaultMQPushConsumer.getMessageModel() == MessageModel.CLUSTERING) {
+                this.defaultMQPushConsumer.changeInstanceNameToPID();
+            }
+
+            // 创建客户端实例
+            this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQPushConsumer, this.rpcHook);
+
+            // 初始化 RebalanceImpl
+            this.rebalanceImpl.setConsumerGroup(this.defaultMQPushConsumer.getConsumerGroup());
+            this.rebalanceImpl.setMessageModel(this.defaultMQPushConsumer.getMessageModel());
+            this.rebalanceImpl.setAllocateMessageQueueStrategy(this.defaultMQPushConsumer.getAllocateMessageQueueStrategy());
+            this.rebalanceImpl.setmQClientFactory(this.mQClientFactory);
+
+            // 创建拉取消息接口调用包装类
+            this.pullAPIWrapper = new PullAPIWrapper(
+                mQClientFactory,
+                this.defaultMQPushConsumer.getConsumerGroup(), isUnitMode());
+            // 注册消息过滤钩子函数列表
+            this.pullAPIWrapper.registerFilterMessageHook(filterMessageHookList);
+
+            // 初始化消费进度
+            if (this.defaultMQPushConsumer.getOffsetStore() != null) {
+                this.offsetStore = this.defaultMQPushConsumer.getOffsetStore();
+            } else {
+                switch (this.defaultMQPushConsumer.getMessageModel()) {
+                    case BROADCASTING:
+                        // 广播模式，消费进度保存在消费者本地
+                        this.offsetStore = new LocalFileOffsetStore(this.mQClientFactory, this.defaultMQPushConsumer.getConsumerGroup());
+                        break;
+                    case CLUSTERING:
+                        // 集群模式，消费进度保存在 Broker
+                        this.offsetStore = new RemoteBrokerOffsetStore(this.mQClientFactory, this.defaultMQPushConsumer.getConsumerGroup());
+                        break;
+                    default:
+                        break;
+                }
+                this.defaultMQPushConsumer.setOffsetStore(this.offsetStore);
+            }
+            this.offsetStore.load();
+
+            // 初始化消息消费服务
+            if (this.getMessageListenerInner() instanceof MessageListenerOrderly) {
+                this.consumeOrderly = true;
+                this.consumeMessageService =
+                    new ConsumeMessageOrderlyService(this, (MessageListenerOrderly) this.getMessageListenerInner());
+            } else if (this.getMessageListenerInner() instanceof MessageListenerConcurrently) {
+                this.consumeOrderly = false;
+                this.consumeMessageService =
+                    new ConsumeMessageConcurrentlyService(this, (MessageListenerConcurrently) this.getMessageListenerInner());
+            }
+
+            this.consumeMessageService.start();
+
+            // 注册消费者到客户端实例
+            boolean registerOK = mQClientFactory.registerConsumer(this.defaultMQPushConsumer.getConsumerGroup(), this);
+            if (!registerOK) {
+                this.serviceState = ServiceState.CREATE_JUST;
+                this.consumeMessageService.shutdown(defaultMQPushConsumer.getAwaitTerminationMillisWhenShutdown());
+                throw new MQClientException("The consumer group[" + this.defaultMQPushConsumer.getConsumerGroup()
+                                            + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
+                                            null);
+            }
+
+            // 启动客户端实例
+            mQClientFactory.start();
+            log.info("the consumer [{}] start OK.", this.defaultMQPushConsumer.getConsumerGroup());
+            this.serviceState = ServiceState.RUNNING;
+            break;
+        case RUNNING:
+        case START_FAILED:
+        case SHUTDOWN_ALREADY:
+            throw new MQClientException("The PushConsumer service state not OK, maybe started once, "
+                                        + this.serviceState
+                                        + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
+                                        null);
+        default:
+            break;
+    }
+
+    // 从 Namesrv 更新路由信息
+    this.updateTopicSubscribeInfoWhenSubscriptionChanged();
+    this.mQClientFactory.checkClientInBroker();
+    // 将客户端信息上报给 Broker
+    this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
+    // 唤醒重平衡线程，立即执行重平衡
+    this.mQClientFactory.rebalanceImmediately();
+}
+```
+
+### 4.2 `MQClientInstance` 启动
+
+```java
+// MQClientInstance.java
+/**
+ * 启动客户端代理
+ *
+ * @throws MQClientException
+ */
+public void start() throws MQClientException {
+
+    synchronized (this) {
+        switch (this.serviceState) {
+            case CREATE_JUST:
+                this.serviceState = ServiceState.START_FAILED;
+                // If not specified,looking address from name server
+                if (null == this.clientConfig.getNamesrvAddr()) {
+                    this.mQClientAPIImpl.fetchNameServerAddr();
+                }
+                // 启动通信模块
+                this.mQClientAPIImpl.start();
+                // 启动定时任务（从 Namesrv 拉取路由、向 Broker 发送心跳等）
+                this.startScheduledTask();
+                // 启动拉取消息服务
+                this.pullMessageService.start();
+                // 启动重平衡线程
+                this.rebalanceService.start();
+                // 启动默认生产者（用于将消费失败的消息重新生产到 Broker）
+                this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
+                log.info("the client factory [{}] start OK", this.clientId);
+                this.serviceState = ServiceState.RUNNING;
+                break;
+            case START_FAILED:
+                throw new MQClientException("The Factory object[" + this.getClientId() + "] has been created before, and failed.", null);
+            default:
+                break;
+        }
+    }
+}
+```
 
 ## 参考资料
 
