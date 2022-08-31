@@ -1,6 +1,9 @@
-# RocketMQ 消息消费（2）客户端设计和启动流程详解 & 源码解析
+# RocketMQ 消费者（2）客户端设计和启动流程详解 & 源码解析
 
 ## 1. 背景
+
+本文是 RocketMQ 消费者系列的第二篇，介绍消费者相关类与调用关系，同时包含消费者启动流程。
+看完本文能够对消息消费涉及到的相关类和消费流程有大体的了解。
 
 ## 2. 概要设计
 
@@ -323,17 +326,3 @@ public void start() throws MQClientException {
     }
 }
 ```
-
-## 参考资料
-
-* [官方文档——设计](https://github.com/apache/rocketmq/blob/master/docs/cn/design.md#42-consumer%E7%9A%84%E8%B4%9F%E8%BD%BD%E5%9D%87%E8%A1%A1)
-* [RocketMQ 实战与进阶——丁威](http://learn.lianglianglee.com/%E4%B8%93%E6%A0%8F/RocketMQ%20%E5%AE%9E%E6%88%98%E4%B8%8E%E8%BF%9B%E9%98%B6%EF%BC%88%E5%AE%8C%EF%BC%89/08%20%E6%B6%88%E6%81%AF%E6%B6%88%E8%B4%B9%20API%20%E4%B8%8E%E7%89%88%E6%9C%AC%E5%8F%98%E8%BF%81%E8%AF%B4%E6%98%8E.md)
-* [RocketMQ消费消息——白云鹏](https://www.baiyp.ren/RocketMQ%E6%B6%88%E8%B4%B9%E6%B6%88%E6%81%AF.html)
-* [消息中间件—RocketMQ消息消费（一）——癫狂侠](https://www.jianshu.com/p/f071d5069059)
-* [RocketMQ 消息接受流程——赵坤](https://kunzhao.org/docs/rocketmq/rocketmq-message-receive-flow/)
-* [RocketMQ 消息消费——贝贝猫](https://zhuanlan.zhihu.com/p/360911990)
-* [RocketMQ 5.0 POP 消费模式探秘](https://developer.aliyun.com/article/801815)
-* [RocketMQ消息消费源码分析](https://www.jianshu.com/p/4757079f871f)
-* [Rocketmq消费消息原理——服务端技术栈](https://blog.csdn.net/daimingbao/article/details/120231289)
-* [RocketMQ——4. Consumer 消费消息——Kong](http://47.100.139.123/blog/article/89)
-* [RocketMQ推送消费源码分析(一)-消息拉取——IT小栈](https://itzones.cn/2020/05/29/RocketMQ%E6%8E%A8%E9%80%81%E6%B6%88%E8%B4%B9%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90-%E6%B6%88%E6%81%AF%E6%8B%89%E5%8F%96/)
