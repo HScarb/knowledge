@@ -202,11 +202,7 @@ $ vim docker-compose/docker-compose.yml
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202207250040182.png)
 
-## 以其他部署形式启动 RocketMQ
-
-除了用 docker-compose 启动双主的集群模式之外，rocketmq-docker 项目还提供了其他部署模式的 docker 快速启动方式。比如 dledger 模式。
-
-### Docker 启动 DLedger 模式的 RocketMQ
+## Docker 启动 DLedger 模式的 RocketMQ
 
 用 DLedger 模式前保证有足够的可用内存（8G 以上）
 
@@ -297,6 +293,8 @@ docker run --net dledger-br -d -p 48080:8080 --link rmqnamesrv:namesrv -e "NAMES
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202208020138914.png)
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202208020138935.png)
+
+## 以其他部署形式启动 RocketMQ
 
 ### Docker 启动单节点 RocketMQ
 

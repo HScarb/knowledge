@@ -59,20 +59,27 @@ KVConfigManager 内部保存了一个二级 `HashMap`： `configTable`，并且�
 
 ### 2.2 交互
 
-![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq_nameserver_interactive.drawio.png)
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq-nameserver-interactive.drawio.png)
 
 上图为 NameServer 与其他组件交互的示意图。可以看到 Producer、Consumer、Broker 均每 30s 向 NameServer 发起一次请求，NameServer 中也有定时器，定期扫描和更新内部数据。
+
+* Client
+
+  * 生产者或消费者启动时，向 Broker 发送心跳，将客户端信息、生产者和消费者信息上报给 Broker。
+
+  * 生产者第一次发送消息时，向 NameServer 拉取该 Topic 的路由信息。
+
+  * 消费者启动过程中会向 NameServer 请求 Topic 路由信息。
+
+  * 每隔 30s 向 NameServer 发送请求，获取它们要生产/消费的 Topic 的路由信息。
 
 * Broker
   * 每隔 30s 向 NameServer 集群的每台机器都发送心跳包，包含自身 Topic 队列的路由信息。
   * 当有 Topic 改动（创建/更新），Broker 会立即发送 Topic 增量信息到 NameServer，同时触发 NameServer 的数据版本号发生变更（+1）。
+
 * NameServer
   * 将路由信息保存在内存中。它只被其他模块调用（被 Broker 上传，被客户端拉取），不会主动调用其他模块。
   * 启动一个定时任务线程，每隔 10s 扫描 brokerAddrTable 中所有的 Broker 上次发送心跳时间，如果超过 120s 没有收到心跳，则从存活 Broker 表中移除该 Broker。
-* Client
-  * 生产者第一次发送消息时，向 NameServer 拉取该 Topic 的路由信息。
-  * 消费者启动过程中会向 NameServer 请求 Topic 路由信息。
-  * 每隔 30s 向 NameServer 发送请求，获取它们要生产/消费的 Topic 的路由信息。
 
 ## 3. 详细设计
 
