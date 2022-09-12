@@ -38,3 +38,5 @@
 
 [RocketMQ 消费者（4）消息拉取 流程详解 & 源码解析](20220904-rocketmq-consumer-4-pull-message.md)
 
+[RocketMQ 消费者（5）消息消费、消费进度上报 流程详解 & 源码解析](20220912-rocketmq-consumer-5-message-consume.md)
+
