@@ -108,11 +108,36 @@ drwxrwxr-x 2 ubuntu ubuntu 4096 Jul 24 15:23 ssl/
 
 如果是采用远程拉取的镜像，首选需要修改一下 `docker-compose.yml` 文件保证使用的镜像名称正确。
 
+最新的 `rocketmq-docker` 项目已经将 docker-compose.yml 中的镜像地址改为了官方镜像地址 `apache/rocketmq`，如果你拉取的版本没有改，需要进行修改。
+
+此外，RocketMQ 有 `brokerIP` 配置，该配置默认会自动获取主机 IP，但是在容器中获取的是容器的 IP，客户端去连接会发现连不上。所以需要提前手动修改 Broker 配置的 IP。
+
+```bash
+$ pwd
+/home/ubuntu/workspace/rocketmq/rocketmq-docker/stages/4.9.4/templates
+$ vim docker-compose/data/broker/conf/broker.conf
+$ vim docker-compose/data1/broker/conf/broker.conf
+
+# broker.conf
+brokerClusterName = DefaultCluster
+brokerName = broker-a
+brokerId = 0
+deleteWhen = 04
+fileReservedTime = 48
+brokerRole = ASYNC_MASTER
+flushDiskType = ASYNC_FLUSH
+
+# 改为宿主机的 IP
+brokerIP1=
+```
+
+然后可以启动 RocketMQ 容器
+
 ```bash
 $ pwd
 /home/ubuntu/workspace/rocketmq/rocketmq-docker/stages/4.9.4/templates
 $ vim docker-compose/docker-compose.yml
-# （如果拉取远程镜像）把其中默认的 image 从 apacherocketmq/rocketmq:4.9.4 改成 apache/rocketmq:4.9.4
+# （如果拉取远程镜像）把其中默认的 image 从 apacherocketmq/rocketmq:4.9.4 改成最新的官方镜像地址 apache/rocketmq:4.9.4
 $ ./play-docker-compose.sh 
 [+] Running 4/4
  ⠿ Network docker-compose_default  Created                                                                                       
@@ -131,13 +156,13 @@ a7d0e64c5335   apache/rocketmq:4.9.4                     "sh mqbroker -c /opt…
 a210d64eddb5   apache/rocketmq:4.9.4                     "sh mqnamesrv"           About a minute ago   Up About a minute   10909/tcp, 0.0.0.0:9876->9876/tcp, :::9876->9876/tcp, 10911-10912/tcp                                                                                   rmqnamesrv
 ```
 
-## 启动 RocketMQ-dashboard
+## 使用 docker 启动 RocketMQ-dashboard
 
 RocketMQ-dashboard 项目是 rocketmq 的控制台，可以可视化的查看 rocketmq 集群状态。也可以用 docker 启动。直接使用官方打包好的镜像，不本地构建了。
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202207241636060.png)
 
-### 用 docker 启动 rocketmq-dashboard
+### 用 docker 单独启动 rocketmq-dashboard
 
 需要先修改 `start-dashboard.sh` 文件
 
