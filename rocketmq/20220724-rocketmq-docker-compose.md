@@ -128,7 +128,34 @@ brokerRole = ASYNC_MASTER
 flushDiskType = ASYNC_FLUSH
 
 # 改为宿主机的 IP
-brokerIP1=
+brokerIP1={宿主机IP}
+```
+
+改成宿主机 IP 之后，发现如果是用 2 主节点，他们的监听 IP 都将会是 `{宿主机IP}:10911`，需要将 broker-b 映射的监听 port 修改一下。
+修改 `docker-compose.yml`
+
+```yml
+  #Service for another broker -- broker1
+  broker1:
+    image: apache/rocketmq:4.9.4
+    container_name: rmqbroker-b
+    links:
+      - namesrv
+    ports:
+      # 修改映射到宿主机的 port
+            #- 10929:10909
+            #- 10931:10911
+            #- 10932:10912
+      - 10929:10929
+      - 10931:10931
+      - 10932:10932
+    environment:
+      - NAMESRV_ADDR=namesrv:9876
+    volumes:
+      - ./data1/broker/logs:/home/rocketmq/logs
+      - ./data1/broker/store:/home/rocketmq/store
+      - ./data1/broker/conf/broker.conf:/opt/rocketmq-4.9.4/conf/broker.conf
+    command: sh mqbroker -c /opt/rocketmq-4.9.4/conf/broker.conf
 ```
 
 然后可以启动 RocketMQ 容器
