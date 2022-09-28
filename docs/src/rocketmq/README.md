@@ -40,3 +40,5 @@
 
 [RocketMQ 消费者（5）消息消费、消费进度上报 流程详解 & 源码解析](20220912-rocketmq-consumer-5-message-consume.md)
 
+[RocketMQ 消费者（6）顺序消费 流程详解 & 源码解析](20220929-rocketmq-consumer-6-consume-orderly.md)
+
