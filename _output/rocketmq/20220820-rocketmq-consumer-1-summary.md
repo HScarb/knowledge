@@ -1,10 +1,23 @@
-# RocketMQ 消费者（1）设计和原理详解
+# RocketMQ 消费者（1）概念和消费流程
 
 [TOC]
 
 ## 1. 背景
 
-## 2. 概述
+RocketMQ 的消费可以算是 RocketMQ 的业务逻辑中最复杂的一块。这里面涉及到许多消费模式和特性。本想一篇文章写完，写到后面发现消费涉及到的内容太多，于是决定分多篇来写。本文作为消费系列的第一篇，主要讲述 RocketMQ 消费涉及到的模式和特性，也会概括性地讲一下消费流程。
+
+我将 RocketMQ 的消费流程大致分成 4 个步骤
+
+1. 重平衡
+2. 消费者拉取消息
+3. Broker 接收拉取请求后从存储中查询消息并返回
+4. 消费者消费消息
+
+每个步骤都会用一篇文章来讲解。
+
+先了解一下 RocketMQ 消费涉及到地概念
+
+## 2. 概念简述
 
 ### 2.1 消费组概念与消费模式
 
@@ -26,7 +39,7 @@
 
 广播模式使用较少，适合各个消费者都需要通知的场景，如刷新应用中的缓存。
 
-![广播消费模式](../assets/rocketmq-consume-message/rocketmq-consume-mode-broadcasting.drawio.png)
+![广播消费模式](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq-consume-message/rocketmq-consume-mode-broadcasting.drawio.png)
 
 > 注意事项：
 >
@@ -45,11 +58,11 @@
 
 更具体一点，在同一消费组中的不同消费者会根据负载机制来平均地订阅 Topic 中的每个 Queue。（默认 AVG 负载方式）
 
-![广播消费模式](../assets/rocketmq-consume-message/rocketmq-consume-mode-clustering.drawio.png)
+![广播消费模式](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq-consume-message/rocketmq-consume-mode-clustering.drawio.png)
 
 RocketMQ 默认使用集群消费模式，这也是大部分场景下会使用到的消费模式。
 
-### 2.2 消息消费形式
+### 2.2 消费者拉取消息模式
 
 #### 2.2.1 Pull
 
@@ -63,17 +76,19 @@ RocketMQ 默认使用集群消费模式，这也是大部分场景下会使用�
 
 在 RocketMQ 中，Push 消费其实也是由 Pull 消费（拉取）实现。Push 消费只是通过客户端 API 层面的封装让用户感觉像是 Broker 在推送消息给消费者。
 
-#### 2.2.3 Pop
+#### 2.2.3 POP
 
-RocketMQ 5.0 引入的新消费形式。
+RocketMQ 5.0 引入的新消费形式，是 Pull 拉取的另一种实现。也可以在 Push 模式下使用 POP 拉取消息，甚至可以和 Push 模式共同使用（分别消费重试 Topic 和普通 Topic）。
 
-Push 模式在一些情况下存在一定缺陷：
+POP 与 Pull 可以通过一个开关实时进行切换。POP 模式下，Broker 来控制每个消费者消费的队列和拉取的消息，把重平衡逻辑从客户端移到了服务端。
+
+主要解决了原来 Push 模式消费的以下痛点：
 
 * 富客户端：客户端逻辑比较重，多语言支持不友好
-* 队列独占：Topic 中的一个 Queue 最多只能被 1 个 Push 消费者消费，消费者数量无法无限扩展
+* 队列独占：Topic 中的一个 Queue 最多只能被 1 个 Push 消费者消费，消费者数量无法无限扩展。且消费者 hang 住时该队列的消息会堆积。
 * 消费后更新 offset：本地消费成功才会提交 offset
 
-会导致消费者 hang 住时分配的队列消息堆积。
+RocketMQ 5.0 的轻量化 gRPC 客户端就是基于 POP 消费模式开发
 
 ### 2.3 队列负载机制与重平衡
 
@@ -102,7 +117,9 @@ AVG_BY_CIRCLE：将 Broker 上的队列轮流分给不同消费者，更适用�
 在实际使用中，消息的消费可能出现失败。RocketMQ 拥有重试机制和死信机制来保证消息消费的可靠性。
 
 1. 正常消费：消费成功则提交消费位点
-2. 重试机制：如果正常消费失败，消息会被放入重试 Topic `%RETRY%消费者组`，最多重试消费 16 次，重试的时间间隔逐渐变长。（消费者组会自动订阅重试 Topic）
+2. 重试机制：如果正常消费失败，消息会被消费者发回 Broker，放入重试 Topic： `%RETRY%消费者组`。最多重试消费 16 次，重试的时间间隔逐渐变长。（消费者组会自动订阅重试 Topic）。
+
+   > 这里地延迟重试采用了 RocketMQ 的延迟消息，重试的 16 次时间间隔为延迟消息配置的每个延迟等级的时间（从第三个等级开始）。如果修改延迟等级时间的配置，重试的时间间隔也会相应发生变化。但即便延迟等级时间间隔配置不足 16 个，仍会重试 16 次，后面按照最大的时间间隔来重试。
 3. 死信机制：如果正常消费和重试 16 次均失败，消息会保存到死信 Topic `%DLQ%消费者组` 中，此时需人工介入处理
 
 #### 2.4.2 队列负载机制与重平衡
@@ -121,7 +138,7 @@ AVG_BY_CIRCLE：将 Broker 上的队列轮流分给不同消费者，更适用�
 
 并发消费的方式是调用消费者的指定 `MessageListenerConcurrently` 作为消费的回调类，顺序消费则使用 `MessageListenerOrderly` 类进行回调。处理这两种消费方式的消费服务也不同，分别是 `ConsumeMessageConcurrentlyService` 和 `ConsumeMessageOrderlyService`。
 
-顺序消费的大致原理是依靠两把锁，一把在 Broker 端，锁定队列和消费者的关系，保证同一时间只有一个消费者在消费；在消费者端也有一把锁以保证消费请求的顺序化。
+顺序消费的大致原理是依靠两组锁，一组在 Broker 端（Broker 锁），锁定队列和消费者的关系，保证同一时间只有一个消费者在消费；在消费者端也有一组锁（消费队列锁）以保证消费的顺序性。
 
 ### 2.6 消费进度保存和提交
 
@@ -139,23 +156,23 @@ AVG_BY_CIRCLE：将 Broker 上的队列轮流分给不同消费者，更适用�
 3. Broker 收到消费进度先缓存到内存，有一个定时任务每隔 5s 将消息偏移量持久化到磁盘
 4. 消费者向 Broker 拉取消息时也会将队列的消息偏移量提交到 Broker
 
-### 2.7 消息消费概要流程
+## 3. 消费流程
 
+这张图是阿里云的文章讲解消费时用到的，能够清晰地表示客户端 Push 模式并发消费流程。
 
+![](https://raw.githubusercontent.com/HScarb/knowledge/master/assets/rocketmq-consume-message/rocketmq-consume-process-aliyun.png)
 
-## 3. 详细设计
+从左上角第一个方框开始看
 
-![](../assets/rocketmq-consume-message/rocketmq-consume-process-aliyun.png)
-
-### 3.1 消费者类结构
-
-### 3.2 消费者启动
-
-
-
-## 4. 源码解析
-
-
+1. 消费者启动时唤醒重平衡服务 `RebalanceService`，重平衡服务是客户端开始消费的起点。
+2. 重平衡服务会周期性（每 20s）执行重平衡方法 `doRebalance)`，查询所有注册的 Broker，根据注册的 Broker 数量为自身分配负载的队列 `rebalanceByTopic()`
+3. 分配完队列后，会为每个分配到的新队列创建一个消息拉取请求 `pullRequest`，这个拉取请求中保存一个处理队列 `processQueue`，即图中的红黑树（`TreeMap`），用来保存拉取到的消息。红黑树保存消息的顺序。
+4. 消息拉取线程应用生产-消费模式，用一个线程从拉取请求队列 `pullRequestQueue` 中弹出拉取请求，执行拉取任务，将拉取到的消息放入处理队列。
+5. 拉取请求在一次拉取消息完成之后会复用，重新被放入拉取请求队列 `pullRequestQueue` 中
+6. 拉取完成后，在 `NettyClientPublicExecutorThreadPool` 线程池异步处理结果，将拉取到的消息放入处理队列，然后调用 `consumeMessageService.submitConsumeRequest`，将处理队列和 多个消费任务提交到消费线程池。每个消费任务消费 1 批消息（1 批默认为 1 条）
+7. 每个消费者都有一个消费线程池 `consumeMessageThreadPool` ，默认有 20 个消费线程。
+8. 消费线程池的每个消费线程会尝试从消费任务队列中获取消费请求，执行消费业务逻辑 `listener.consumeMessage`。
+9. 消费完成后，如果消费成功，则更新偏移量 `updateOffset`（先更新到内存 `offsetTable`，定时上报到 Broker。Broker 端也先放到内存，定时刷盘）。
 
 ## 参考资料
 
@@ -170,3 +187,10 @@ AVG_BY_CIRCLE：将 Broker 上的队列轮流分给不同消费者，更适用�
 * [Rocketmq消费消息原理——服务端技术栈](https://blog.csdn.net/daimingbao/article/details/120231289)
 * [RocketMQ——4. Consumer 消费消息——Kong](http://47.100.139.123/blog/article/89)
 
+
+
+---
+
+欢迎关注公众号【消息中间件】（middleware-mq），更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)

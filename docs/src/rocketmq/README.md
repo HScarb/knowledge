@@ -32,6 +32,8 @@
 
 [使用 Docker 和 docker-compose 快速部署 RocketMQ 集群 双主 / DLedger](20220724-rocketmq-docker-compose.md)
 
+[RocketMQ 消费者（1）概念和消费流程](20220820-rocketmq-consumer-1-summary.md)
+
 [RocketMQ 消费者（2）客户端设计和启动流程详解 & 源码解析](20220827-rocketmq-consumer-2-struct-and-init.md)
 
 [RocketMQ 消费者（3）重平衡 流程详解 & 源码解析](20220830-rocketmq-consumer-3-rebalance.md)
