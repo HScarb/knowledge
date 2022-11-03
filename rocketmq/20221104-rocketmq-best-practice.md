@@ -76,6 +76,11 @@ public String buildMQClientId() {
 
 ## 消费者
 
+### 消费幂等
+
+RocketMQ无法避免消息重复（Exactly-Once），所以如果业务对消费重复非常敏感，有必要根据业务上的唯一Key对消息做幂等处理。
+因为不同的Message ID对应的消息内容可能相同，有可能出现冲突（重复）的情况，所以真正安全的幂等处理，不建议以Message ID作为处理依据。最好的方式是以业务唯一标识作为幂等处理的关键依据，而业务的唯一标识可以通过消息Key设置。
+
 ### 消费组线程数
 
 RocketMQ 消费者提供 `consumeThreadMin`、`consumeThreadMax` 两个参数来设置线程池中的线程个数，但是由于线程池内部为无界队列，所以 `consumeThreadMax` 参数无效。
