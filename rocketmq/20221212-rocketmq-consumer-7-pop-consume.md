@@ -105,7 +105,7 @@ Pop 消费主要的设计思想是将繁重的客户端逻辑如重平衡、消�
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202212130025660.png)
 
-对于长时间没有 ACK 的消息，Broker 端并非毫无办法。Pop 消费引入了消息不可见时间（invisibleTime）的机制。当 Pop 出一条消息后，这条消息对所有消费者不可见，即进入不可见时间，当它超过该时刻还没有被 ACK，Broker 将会把它放入重试队列（这个过程称为 Revive），这条消息重新可以被消费。
+对于长时间没有 ACK 的消息，Broker 端并非毫无办法。Pop 消费引入了消息不可见时间（invisibleTime）的机制。当 Pop 出一条消息后，这条消息对所有消费者不可见，即进入不可见时间，当它超过该时刻还没有被 ACK，Broker 将会把它放入 Pop 专门的重试 Topic（这个过程称为 Revive），这条消息重新可以被消费。
 
 ![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202212130013463.png)
 
@@ -177,6 +177,8 @@ Broker 端重平衡入口为 `QueryAssignmentProcessor#doLoadBalance()`。
 
 ![](../assets/rocketmq-consume-message/broker-pop-message-process.drawio.png)
 
+#### 3.2.1 请求处理入口
+
 Pop 消息的 Broker 端处理是由 `PopMessageProcessor#processRequest()` 完成。
 
 该方法逻辑为
@@ -188,19 +190,62 @@ Pop 消息的 Broker 端处理是由 `PopMessageProcessor#processRequest()` 完�
 5. 如果 Pop 的消息没有满（达到请求的最大消息数量），且之前没有拉取过重试消息，则 Pop 重试 Topic 所有队列的消息（期望填充满 Pop 请求要求的数量）
 6. 判断是否 Pop 到消息，如果有则传输回客户端，如果没有则挂起轮询，直到超过请求的 timeout 参数指定的时间
 
-其中 3、4、5 都涉及到从存储中 Pop 消息，它们都调用同一个方法：`popMsgFromQueue`，它是真正查询消息的方法，下面看一下它的逻辑
+#### 3.2.2 Pop 消息方法
+
+上面的 3、4、5 都涉及到从存储中 Pop 消息，它们都调用同一个方法：`popMsgFromQueue`，它是真正查询消息的方法，下面看一下它的逻辑
 
 1. 将需要 Pop 的队列上锁（用 `AtomicBoolean` 实现）
 2. 计算 Pop 消息的起始偏移量，会返回内存中 CheckPoint 与 ACK 消息匹配后的最新位点
 3. 从磁盘中根据起始偏移量查询一批消息
-4. 计算队列剩余的消息数量
+4. 计算队列剩余的消息数量（用作返回值）
 5. 拉取的这批消息将生成一个 `CheckPoint`，存入内存和磁盘
 6. 解锁队列
 7. 返回 Pop 到的消息
 
+上面方法第 5 步会将生成的 `CheckPoint` 放入内存和磁盘，注意这个 `CheckPoint` 会保存一批获取到的消息的起始偏移量和相对偏移量（相对于起始偏移量），所以一个 `CheckPoint` 在保存和匹配时都对应一批消息。
+
+#### 3.2.3 保存 `CheckPoint` 用于匹配
+
+1. 构造 `CheckPoint`，添加起始偏移量和所有 Pop 出的消息的相对偏移量
+2. 尝试将 `CheckPoint` 添加到内存 Buffer，如果成功则直接返回。但是在内存中匹配 `CheckPoint` 和 `AckMsg` 的开关默认是关闭的，所以这里不会加入到内存，会继续后面的逻辑放入磁盘
+3. 将 `CheckPoint` 构造成一个消息，数据都放到消息体中，然后这个消息定时到 `ReviveTime`（唤醒重试的时间）- 1s（为了留时间与 `AckMsg` 匹配）发送。会发送到 ReviveTopic 的一个队列。
+
 ### 3.3 Broker 端 ACK 消息
 
+Ack 消息接口每次只允许 Ack 一条消息，入口是 `AckMessageProcessor#processRequest()`
+
+1. 从请求头解析和构造 Ack 消息，并作一些校验
+2. 顺序消息 Ack 和普通消息 Ack 分别处理，这里针对普通消息
+3. 先尝试将 Ack 消息放入内存 Buffer，如果成功则直接返回。失败则有可能是内存匹配未开启。
+4. 如果放入内存失败，构造一个用于存到磁盘的消息，定时到唤醒重试时间投递（到 ReviveTopic）。
+
 ### 3.4 Broker 端 `CheckPoint` 与 `AckMsg` 匹配
+
+`CheckPoint` 和 `AckMsg` 都被设计成先尝试放入内存中匹配，然后再磁盘中匹配，因为通常情况下消息消费之后都能很快 ACK，内存匹配性能较高。如果 `CheckPoint` 在内存中停留太久没有被匹配，则会转移到磁盘中（ReviveTopic），有个线程消费这个 ReviveTopic 来匹配。到达唤醒重试时间（ReviveTime）还没有被匹配的 `CheckPoint` 里面的消息将会重试（发送到 Pop 消息重试 Topic，后面的 Pop 有概率消费到）。
+
+#### 3.4.1 内存匹配
+
+内存匹配逻辑由一个线程 `PopBufferMergeService` 完成，只有主节点运行该匹配线程。
+
+Pop 消息时会先添加 `CheckPoint` 到 buffer，Ack 消息时尝试从内存 buffer 中的 `CheckPoint` 匹配。同时，它每 5ms 执行一次扫描，将不符合内存中存活条件的 `CheckPoint` 移除，放入磁盘存储。
+
+`addCk` 方法将 `CheckPoint` 放入内存 Buffer。`CheckPoint` 中有一个码表 `BitMap`，用来表示它里面的每个条消息是否被 Ack 和被存到磁盘。用 `BitMap` 可以加速匹配。
+
+`addAk` 方法会尝试从 buffer 中找 `CheckPoint` 来匹配。如果找到对应的 `CheckPoint`，则修改它码表的对应位，表示这条消息被 ACK。
+
+`scan` 方法每 5ms 执行一次
+
+1. 将已经匹配或存盘的 `CheckPoint` 移出 buffer
+2. 把超时的 `CheckPoint` 存入磁盘
+3. 对于匹配完成或者存盘的 `CheckPoint`，为他们提交消息偏移量
+
+#### 3.4.2 Store 匹配和消息重试
+
+从内存中移除保存到磁盘的 `CheckPoint` 和 `AckMsg` 都会封装成消息进行定时投递（定时到重试时间），最终投递到 `ReviveTopic`。存储中匹配也由一个线程 `PopReviveService` 完成，它消费 `ReviveTopic` 的消息进行匹配和重试。
+
+Pop 消费由于要根据 Topic 来 Pop 消息，重试 Topic 需要针对每个 [消费组-Topic] 隔离，所以它不能用普通消息的消费组维度的重试 Topic，而是用专门的 Pop 重试 Topic `%RETRY%{消费组}_{TOPIC}`。
+
+
 
 ## 4. 源码解析
 
@@ -490,7 +535,7 @@ private RemotingCommand processRequest(final Channel channel, RemotingCommand re
  * @param startOffsetInfo 获取 Pop 的起始偏移量
  * @param msgOffsetInfo 获取所有 Pop 的消息的逻辑偏移量
  * @param orderCountInfo
- * @return
+ * @return 队列剩余消息
  */
 private long popMsgFromQueue(boolean isRetry, GetMessageResult getMessageResult,
                              PopMessageRequestHeader requestHeader, int queueId, long restNum, int reviveQid,
@@ -602,6 +647,358 @@ private long popMsgFromQueue(boolean isRetry, GetMessageResult getMessageResult,
     return restNum;
 }
 ```
+
+#### 4.2.3 `PopMessageProcessor#appendCheckPoint`
+
+```java
+/**
+ * 在 POP 拉取消息后调用，添加 CheckPoint，等待 ACK
+ *
+ * @param requestHeader
+ * @param topic POP 的 Topic
+ * @param reviveQid Revive 队列 ID
+ * @param queueId POP 的队列 ID
+ * @param offset POP 消息的起始偏移量
+ * @param getMessageTmpResult POP 一批消息的结果
+ * @param popTime POP 时间
+ * @param brokerName
+ */
+private void appendCheckPoint(final PopMessageRequestHeader requestHeader,
+                              final String topic, final int reviveQid, final int queueId, final long offset,
+                              final GetMessageResult getMessageTmpResult, final long popTime, final String brokerName) {
+    // add check point msg to revive log
+    final PopCheckPoint ck = new PopCheckPoint();
+    // ... 构造 PopCheckPoint，赋值过程省略
+    
+    for (Long msgQueueOffset : getMessageTmpResult.getMessageQueueOffset()) {
+        // 添加所有拉取的消息的偏移量与起始偏移量的差值
+        ck.addDiff((int) (msgQueueOffset - offset));
+    }
+
+    // 将 Offset 放入内存
+    final boolean addBufferSuc = this.popBufferMergeService.addCk(
+        ck, reviveQid, -1, getMessageTmpResult.getNextBeginOffset()
+    );
+
+    if (addBufferSuc) {
+        return;
+    }
+
+    // 放入内存匹配失败（内存匹配未开启），将 Offset 放入内存和磁盘
+    this.popBufferMergeService.addCkJustOffset(
+        ck, reviveQid, -1, getMessageTmpResult.getNextBeginOffset()
+    );
+}
+```
+
+### 4.3 Broker 端 Ack 消息
+
+#### 4.3.1 `AckMessageProcessor#processRequest`
+
+```java
+/**
+ * 处理 Ack 消息请求，每次 Ack 一条消息
+ *
+ * @param channel
+ * @param request
+ * @param brokerAllowSuspend
+ * @return
+ * @throws RemotingCommandException
+ */
+private RemotingCommand processRequest(final Channel channel, RemotingCommand request,
+                                       boolean brokerAllowSuspend) throws RemotingCommandException {
+    // 解析请求头
+    final AckMessageRequestHeader requestHeader = (AckMessageRequestHeader) request.decodeCommandCustomHeader(AckMessageRequestHeader.class);
+    MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
+    AckMsg ackMsg = new AckMsg();
+    RemotingCommand response = RemotingCommand.createResponseCommand(ResponseCode.SUCCESS, null);
+    response.setOpaque(request.getOpaque());
+    // ... 校验
+    
+    // 拆分消息句柄字符串
+    String[] extraInfo = ExtraInfoUtil.split(requestHeader.getExtraInfo());
+
+    // 用请求头中的信息构造 AckMsg
+    ackMsg.setAckOffset(requestHeader.getOffset());
+    ackMsg.setStartOffset(ExtraInfoUtil.getCkQueueOffset(extraInfo));
+    ackMsg.setConsumerGroup(requestHeader.getConsumerGroup());
+    ackMsg.setTopic(requestHeader.getTopic());
+    ackMsg.setQueueId(requestHeader.getQueueId());
+    ackMsg.setPopTime(ExtraInfoUtil.getPopTime(extraInfo));
+    ackMsg.setBrokerName(ExtraInfoUtil.getBrokerName(extraInfo));
+
+    int rqId = ExtraInfoUtil.getReviveQid(extraInfo);
+
+    this.brokerController.getBrokerStatsManager().incBrokerAckNums(1);
+    this.brokerController.getBrokerStatsManager().incGroupAckNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(), 1);
+
+    if (rqId == KeyBuilder.POP_ORDER_REVIVE_QUEUE) {
+        // ... 顺序消息 ACK
+    }
+
+    // 普通消息 ACK
+    // 先尝试放入内存匹配，成功则直接返回。失败可能是内存匹配未开启
+    if (this.brokerController.getPopMessageProcessor().getPopBufferMergeService().addAk(rqId, ackMsg)) {
+        return response;
+    }
+
+    // 构造 Ack 消息
+    msgInner.setTopic(reviveTopic);
+    msgInner.setBody(JSON.toJSONString(ackMsg).getBytes(DataConverter.charset));
+    //msgInner.setQueueId(Integer.valueOf(extraInfo[3]));
+    msgInner.setQueueId(rqId);
+    msgInner.setTags(PopAckConstants.ACK_TAG);
+    msgInner.setBornTimestamp(System.currentTimeMillis());
+    msgInner.setBornHost(this.brokerController.getStoreHost());
+    msgInner.setStoreHost(this.brokerController.getStoreHost());
+    // 定时消息，定时到唤醒重试时间投递
+    msgInner.setDeliverTimeMs(ExtraInfoUtil.getPopTime(extraInfo) + ExtraInfoUtil.getInvisibleTime(extraInfo));
+    msgInner.getProperties().put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, PopMessageProcessor.genAckUniqueId(ackMsg));
+    msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
+    // 保存 Ack 消息到磁盘
+    PutMessageResult putMessageResult = this.brokerController.getEscapeBridge().putMessageToSpecificQueue(msgInner);
+    if (putMessageResult.getPutMessageStatus() != PutMessageStatus.PUT_OK
+        && putMessageResult.getPutMessageStatus() != PutMessageStatus.FLUSH_DISK_TIMEOUT
+        && putMessageResult.getPutMessageStatus() != PutMessageStatus.FLUSH_SLAVE_TIMEOUT
+        && putMessageResult.getPutMessageStatus() != PutMessageStatus.SLAVE_NOT_AVAILABLE) {
+        POP_LOGGER.error("put ack msg error:" + putMessageResult);
+    }
+    return response;
+}
+```
+
+### 4.4 Broker 端 `CheckPoint` 与 `AckMsg` 匹配
+
+#### 4.4.1 `PopBufferMergeService#addCk`
+
+```java
+/**
+ * POP 消息后，新增 CheckPoint，放入内存 Buffer
+ *
+ * @param point
+ * @param reviveQueueId
+ * @param reviveQueueOffset
+ * @param nextBeginOffset
+ * @return 是否添加成功
+ */
+public boolean addCk(PopCheckPoint point, int reviveQueueId, long reviveQueueOffset, long nextBeginOffset) {
+    // key: point.getT() + point.getC() + point.getQ() + point.getSo() + point.getPt()
+    if (!brokerController.getBrokerConfig().isEnablePopBufferMerge()) {
+        return false;
+    }
+    // 内存匹配服务是否开启
+    if (!serving) {
+        return false;
+    }
+
+    // 距离下次可重试 Pop 消费的时刻 < 4.5s
+    long now = System.currentTimeMillis();
+    if (point.getReviveTime() - now < brokerController.getBrokerConfig().getPopCkStayBufferTimeOut() + 1500) {
+        if (brokerController.getBrokerConfig().isEnablePopLog()) {
+            POP_LOGGER.warn("[PopBuffer]add ck, timeout, {}, {}", point, now);
+        }
+        return false;
+    }
+
+    if (this.counter.get() > brokerController.getBrokerConfig().getPopCkMaxBufferSize()) {
+        POP_LOGGER.warn("[PopBuffer]add ck, max size, {}, {}", point, this.counter.get());
+        return false;
+    }
+
+    PopCheckPointWrapper pointWrapper = new PopCheckPointWrapper(reviveQueueId, reviveQueueOffset, point, nextBeginOffset);
+
+    if (!checkQueueOk(pointWrapper)) {
+        return false;
+    }
+
+    // 将 CheckPoint 放入 Offset 队列
+    putOffsetQueue(pointWrapper);
+    // 将 CheckPoint 放入内存 Buffer
+    this.buffer.put(pointWrapper.getMergeKey(), pointWrapper);
+    this.counter.incrementAndGet();
+    if (brokerController.getBrokerConfig().isEnablePopLog()) {
+        POP_LOGGER.info("[PopBuffer]add ck, {}", pointWrapper);
+    }
+    return true;
+}
+```
+
+#### 4.4.2 `PopBufferMergeService#addAk`
+
+```java
+/**
+ * 消息 ACK，与内存中的 CheckPoint 匹配
+ *
+ * @param reviveQid
+ * @param ackMsg
+ * @return 是否匹配成功
+ */
+public boolean addAk(int reviveQid, AckMsg ackMsg) {
+    // 如果未开启内存匹配，直接返回
+    if (!brokerController.getBrokerConfig().isEnablePopBufferMerge()) {
+        return false;
+    }
+    if (!serving) {
+        return false;
+    }
+    try {
+        // 根据 ACK 的消息找到内存 Buffer 中的 CheckPoint
+        PopCheckPointWrapper pointWrapper = this.buffer.get(ackMsg.getTopic() + ackMsg.getConsumerGroup() + ackMsg.getQueueId() + ackMsg.getStartOffset() + ackMsg.getPopTime() + ackMsg.getBrokerName());
+        if (pointWrapper == null) {
+            // 找不到 CheckPoint
+            if (brokerController.getBrokerConfig().isEnablePopLog()) {
+                POP_LOGGER.warn("[PopBuffer]add ack fail, rqId={}, no ck, {}", reviveQid, ackMsg);
+            }
+            return false;
+        }
+
+        // 内存中仅保存 Offset，实际已经保存到磁盘，内存中不处理 ACK 消息的匹配，直接返回
+        if (pointWrapper.isJustOffset()) {
+            return false;
+        }
+
+        PopCheckPoint point = pointWrapper.getCk();
+        long now = System.currentTimeMillis();
+
+        if (point.getReviveTime() - now < brokerController.getBrokerConfig().getPopCkStayBufferTimeOut() + 1500) {
+            if (brokerController.getBrokerConfig().isEnablePopLog()) {
+                POP_LOGGER.warn("[PopBuffer]add ack fail, rqId={}, almost timeout for revive, {}, {}, {}", reviveQid, pointWrapper, ackMsg, now);
+            }
+            return false;
+        }
+
+        if (now - point.getPopTime() > brokerController.getBrokerConfig().getPopCkStayBufferTime() - 1500) {
+            if (brokerController.getBrokerConfig().isEnablePopLog()) {
+                POP_LOGGER.warn("[PopBuffer]add ack fail, rqId={}, stay too long, {}, {}, {}", reviveQid, pointWrapper, ackMsg, now);
+            }
+            return false;
+        }
+
+        // 标记该 CheckPoint 已经被 ACK
+        int indexOfAck = point.indexOfAck(ackMsg.getAckOffset());
+        if (indexOfAck > -1) {
+            // 设置 CheckPoint 中被 Ack 消息的 bit 码表为 1
+            markBitCAS(pointWrapper.getBits(), indexOfAck);
+        } else {
+            POP_LOGGER.error("[PopBuffer]Invalid index of ack, reviveQid={}, {}, {}", reviveQid, ackMsg, point);
+            return true;
+        }
+
+        return true;
+    } catch (Throwable e) {
+        POP_LOGGER.error("[PopBuffer]add ack error, rqId=" + reviveQid + ", " + ackMsg, e);
+    }
+
+    return false;
+}
+```
+
+#### 4.4.3 `PopBufferMergeService#scan`
+
+```java
+/**
+ * 扫描内存中的 CheckPoint
+ * 把已经匹配或存盘的 CheckPoint 移出 buffer
+ * 把已经全部 Ack 的 CheckPoint 存盘
+ */
+private void scan() {
+    long startTime = System.currentTimeMillis();
+    int count = 0, countCk = 0;
+    Iterator<Map.Entry<String, PopCheckPointWrapper>> iterator = buffer.entrySet().iterator();
+    // 遍历所有内存中的 CheckPoint
+    while (iterator.hasNext()) {
+        Map.Entry<String, PopCheckPointWrapper> entry = iterator.next();
+        PopCheckPointWrapper pointWrapper = entry.getValue();
+
+        // 如果 CheckPoint 已经在磁盘中，或者全部消息都匹配成功，从内存中 buffer 中移除
+        // just process offset(already stored at pull thread), or buffer ck(not stored and ack finish)
+        if (pointWrapper.isJustOffset() && pointWrapper.isCkStored() || isCkDone(pointWrapper)
+            || isCkDoneForFinish(pointWrapper) && pointWrapper.isCkStored()) {
+            iterator.remove();
+            counter.decrementAndGet();
+            continue;
+        }
+
+        PopCheckPoint point = pointWrapper.getCk();
+        long now = System.currentTimeMillis();
+
+        // 是否要从内存中移除 CheckPoint
+        boolean removeCk = !this.serving;
+        // 距离 ReviveTime 时间小于阈值（默认3s）
+        // ck will be timeout
+        if (point.getReviveTime() - now < brokerController.getBrokerConfig().getPopCkStayBufferTimeOut()) {
+            removeCk = true;
+        }
+
+        // 在内存中时间大于阈值（默认10s）
+        // the time stayed is too long
+        if (now - point.getPopTime() > brokerController.getBrokerConfig().getPopCkStayBufferTime()) {
+            removeCk = true;
+        }
+
+        if (now - point.getPopTime() > brokerController.getBrokerConfig().getPopCkStayBufferTime() * 2L) {
+            POP_LOGGER.warn("[PopBuffer]ck finish fail, stay too long, {}", pointWrapper);
+        }
+
+        // double check
+        if (isCkDone(pointWrapper)) {
+            continue;
+        } else if (pointWrapper.isJustOffset()) {
+            // just offset should be in store.
+            if (pointWrapper.getReviveQueueOffset() < 0) {
+                putCkToStore(pointWrapper, false);
+                countCk++;
+            }
+            continue;
+        } else if (removeCk) {
+            // 将 CheckPoint 包装成消息放入磁盘，从内存中移除
+            // put buffer ak to store
+            if (pointWrapper.getReviveQueueOffset() < 0) {
+                putCkToStore(pointWrapper, false);
+                countCk++;
+            }
+
+            if (!pointWrapper.isCkStored()) {
+                continue;
+            }
+
+            // 在内存中移除 CheckPoint 前，把它当中已经 Ack 的消息也作为 Ack 消息存入磁盘
+            for (byte i = 0; i < point.getNum(); i++) {
+                // 遍历 CheckPoint 中消息 bit 码表每一位，检查是否已经 Ack 并且没有存入磁盘
+                // reput buffer ak to store
+                if (DataConverter.getBit(pointWrapper.getBits().get(), i)
+                    && !DataConverter.getBit(pointWrapper.getToStoreBits().get(), i)) {
+                    if (putAckToStore(pointWrapper, i)) {
+                        count++;
+                        markBitCAS(pointWrapper.getToStoreBits(), i);
+                    }
+                }
+            }
+
+            if (isCkDoneForFinish(pointWrapper) && pointWrapper.isCkStored()) {
+                if (brokerController.getBrokerConfig().isEnablePopLog()) {
+                    POP_LOGGER.info("[PopBuffer]ck finish, {}", pointWrapper);
+                }
+                iterator.remove();
+                counter.decrementAndGet();
+                continue;
+            }
+        }
+    }
+
+    // 扫描已经完成的 CheckPoint，为它们提交消息消费进度
+    int offsetBufferSize = scanCommitOffset();
+
+    scanTimes++;
+
+    if (scanTimes >= countOfMinute1) {
+        counter.set(this.buffer.size());
+        scanTimes = 0;
+    }
+}
+```
+
+
 
 ## 参考资料
 
