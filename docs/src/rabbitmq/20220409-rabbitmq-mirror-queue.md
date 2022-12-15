@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-04-09
 ---
 
+原文地址：[http://hscarb.github.io/rabbitmq/20220409-rabbitmq-mirror-queue.html](http://hscarb.github.io/rabbitmq/20220409-rabbitmq-mirror-queue.html)
+
 # RabbitMQ 镜像队列 使用和原理详解
 
 [[toc]]

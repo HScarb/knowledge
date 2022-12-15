@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-03-28
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220328-rocketmq-expired-file-delete.html](http://hscarb.github.io/rocketmq/20220328-rocketmq-expired-file-delete.html)
+
 # RocketMQ 过期文件删除机制 源码剖析
 
 [[toc]]

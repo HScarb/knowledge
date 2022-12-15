@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-01-31
 ---
 
+原文地址：[http://hscarb.github.io/rabbitmq/20220131-rabbitmq-flow-control.html](http://hscarb.github.io/rabbitmq/20220131-rabbitmq-flow-control.html)
+
 # RabbitMQ 进程内流控（Flow Control） 源码解析
 
 [[toc]]

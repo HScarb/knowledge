@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-03-20
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220320-rocketmq-scheduled-message-4.9.3-improve.html](http://hscarb.github.io/rocketmq/20220320-rocketmq-scheduled-message-4.9.3-improve.html)
+
 # RocketMQ 延迟消息（定时消息）4.9.3 版本优化 异步投递支持
 
 [[toc]]

@@ -44,3 +44,7 @@
 
 [RocketMQ 消费者（6）顺序消费 流程详解 & 源码解析](20220929-rocketmq-consumer-6-consume-orderly.md)
 
+[RocketMQ 最佳实践](20221104-rocketmq-best-practice.md)
+
+[RocketMQ 5.0: POP 消费模式 原理详解 & 源码解析](20221212-rocketmq-consumer-7-pop-consume.md)
+

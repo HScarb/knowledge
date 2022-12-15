@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-05-15
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220515-rocketmq-acl.html](http://hscarb.github.io/rocketmq/20220515-rocketmq-acl.html)
+
 # RocketMQ ACL 权限控制 详解 & 源码剖析
 
 [[toc]]

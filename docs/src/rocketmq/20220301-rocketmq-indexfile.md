@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-03-01
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220301-rocketmq-indexfile.html](http://hscarb.github.io/rocketmq/20220301-rocketmq-indexfile.html)
+
 # RocketMQ IndexFile 索引文件
 
 [[toc]]

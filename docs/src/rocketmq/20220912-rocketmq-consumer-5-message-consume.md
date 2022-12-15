@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-09-12
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220912-rocketmq-consumer-5-message-consume.html](http://hscarb.github.io/rocketmq/20220912-rocketmq-consumer-5-message-consume.html)
+
 # RocketMQ 消费者（5）消息消费、消费进度上报 流程详解 & 源码解析
 
 ## 1. 背景

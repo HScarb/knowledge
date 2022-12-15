@@ -1,3 +1,11 @@
+---
+title: RocketMQ 5.0: POP 消费模式 原理详解 & 源码解析
+author: Scarb
+date: 2022-12-12
+---
+
+原文地址：[http://hscarb.github.io/rocketmq/20221212-rocketmq-consumer-7-pop-consume.html](http://hscarb.github.io/rocketmq/20221212-rocketmq-consumer-7-pop-consume.html)
+
 # RocketMQ 5.0: POP 消费模式 原理详解 & 源码解析
 
 ## 1. 背景
@@ -119,7 +127,7 @@ Push 消费的重试间隔时间会随着重试次数而增加，Pop 消费也�
 
 ### 2.2 客户端-服务端交互
 
-![](../assets/rocketmq-consume-message/rocketmq-consumer-pop-consume-struct.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2022/12/1671126626388.png)
 
 Pop 消费的流程与 Push 消费较为相似，这里我分为 5 个步骤。
 
@@ -171,11 +179,11 @@ Broker 端重平衡入口为 `QueryAssignmentProcessor#doLoadBalance()`。
 
 下图为 `popShareQueueNum = 1`  时的重平衡情况，每个消费者被负载了 2 次，每个队列被 2 个消费者共享（1 + `popShareQueueNum`）。
 
-![](../assets/rocketmq-consume-message/pop-rebalance.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2022/12/1671126626711.png)
 
 ### 3.2 Broker 端 Pop 消息
 
-![](../assets/rocketmq-consume-message/broker-pop-message-process.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2022/12/1671126626730.png)
 
 #### 3.2.1 请求处理入口
 
@@ -245,7 +253,7 @@ Pop 消息时会先添加 `CheckPoint` 到 buffer，Ack 消息时尝试从内存
 
 Pop 消费由于要根据 Topic 来 Pop 消息，重试 Topic 需要针对每个 [消费组-Topic] 隔离，所以它不能用普通消息的消费组维度的重试 Topic，而是用专门的 Pop 重试 Topic `%RETRY%{消费组}_{TOPIC}`。
 
-![](../assets/rocketmq-consume-message/pop-revive-service-process.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2022/12/1671126626776.png)
 
 `PopReviveService#run` 方法是该处理线程的入口，它每秒都会调用 `consumeReviveMessage` 消费和匹配 ReviveTopic 消息，然后调用 `mergeAndRevive` 方法检查匹配的情况并对达到唤醒时间还没有成功匹配的消息重试。
 
@@ -1275,3 +1283,10 @@ private void reviveRetry(PopCheckPoint popCheckPoint, MessageExt messageExt) thr
 * [[RIP 19] Server side rebalance, lightweight consumer client support](https://github.com/apache/rocketmq/wiki/%5BRIP-19%5D-Server-side-rebalance,--lightweight-consumer-client-support)
 * [RocketMQ 5.0 POP 消费模式探秘](https://developer.aliyun.com/article/801815)
 
+
+
+---
+
+欢迎关注公众号【消息中间件】（middleware-mq），更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)

@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-06-10
 ---
 
+原文地址：[http://hscarb.github.io/rabbitmq/20220610-rabbitmq-store.html](http://hscarb.github.io/rabbitmq/20220610-rabbitmq-store.html)
+
 # RabbitMQ 存储机制
 
 ## 1. 背景

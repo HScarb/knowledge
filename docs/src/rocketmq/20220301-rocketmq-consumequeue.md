@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-03-01
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220301-rocketmq-consumequeue.html](http://hscarb.github.io/rocketmq/20220301-rocketmq-consumequeue.html)
+
 # RocketMQ ConsumeQueue 消费队列文件
 
 [[toc]]

@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-06-14
 ---
 
+原文地址：[http://hscarb.github.io/other/20220614-erlang-note.html](http://hscarb.github.io/other/20220614-erlang-note.html)
+
 # Erlang 学习笔记
 
 ## 顺序编程

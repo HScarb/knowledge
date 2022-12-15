@@ -20,6 +20,8 @@ author: Scarb
 date: {date}
 ---
 
+原文地址：[{address}]({address})
+
 '''
 SUFFIX = '''
 
@@ -132,8 +134,9 @@ def convert_image_url_to_output():
                     convert_file_with_lambda(file_path, docs_path, _upload_local_image_to_oss,
                                              prefix=PREFIX.format(
                                                  title=find_first_line_start_with_in_file(file_path).strip(),
-                                                 date=datetime.strptime(name[0:8], '%Y%m%d').strftime(
-                                                     '%Y-%m-%d')),
+                                                 date=datetime.strptime(name[0:8], '%Y%m%d').strftime('%Y-%m-%d'),
+                                                 address='http://hscarb.github.io/' + file_path.replace('\\', '/').replace('.md', '.html')
+                                             ),
                                              suffix=SUFFIX)
         generate_readme_for_dir(os.path.join(DOCS_FOLDER, folder), folder)
 

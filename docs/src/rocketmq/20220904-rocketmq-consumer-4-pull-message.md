@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-09-04
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220904-rocketmq-consumer-4-pull-message.html](http://hscarb.github.io/rocketmq/20220904-rocketmq-consumer-4-pull-message.html)
+
 # RocketMQ 消费者（4）消息拉取 流程详解 & 源码解析
 
 ## 1. 背景

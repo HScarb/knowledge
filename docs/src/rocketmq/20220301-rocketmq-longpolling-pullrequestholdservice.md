@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-03-01
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220301-rocketmq-longpolling-pullrequestholdservice.html](http://hscarb.github.io/rocketmq/20220301-rocketmq-longpolling-pullrequestholdservice.html)
+
 # RocketMQ 消息消费 轮询机制 PullRequestHoldService
 
 [[toc]]

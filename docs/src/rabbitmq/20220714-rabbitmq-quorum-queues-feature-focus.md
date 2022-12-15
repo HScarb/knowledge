@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-07-14
 ---
 
+原文地址：[http://hscarb.github.io/rabbitmq/20220714-rabbitmq-quorum-queues-feature-focus.html](http://hscarb.github.io/rabbitmq/20220714-rabbitmq-quorum-queues-feature-focus.html)
+
 # RabbitMQ 3.8 特性聚焦：仲裁队列（Quorum Queues）
 
 > 翻译自：https://www.cloudamqp.com/blog/rabbitmq-quorum-queues.html，写于 2019-03-28

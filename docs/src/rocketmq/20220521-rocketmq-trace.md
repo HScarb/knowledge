@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-05-21
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220521-rocketmq-trace.html](http://hscarb.github.io/rocketmq/20220521-rocketmq-trace.html)
+
 # RocketMQ 消息轨迹 
 
 ## 1. 背景

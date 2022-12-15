@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-03-13
 ---
 
+原文地址：[http://hscarb.github.io/rabbitmq/20220313-rabbitmq-federation-plugin.html](http://hscarb.github.io/rabbitmq/20220313-rabbitmq-federation-plugin.html)
+
 # RabbitMQ Federation 插件使用
 
 [[toc]]

@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-06-06
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220606-rocketmq-send-message.html](http://hscarb.github.io/rocketmq/20220606-rocketmq-send-message.html)
+
 # RocketMQ 消息发送设计和原理详解 源码剖析
 
 [[toc]]

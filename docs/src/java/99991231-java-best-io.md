@@ -4,6 +4,8 @@ author: Scarb
 date: 9999-12-31
 ---
 
+原文地址：[http://hscarb.github.io/java/99991231-java-best-io.html](http://hscarb.github.io/java/99991231-java-best-io.html)
+
 # Java 最强 IO
 # 参考资料
 

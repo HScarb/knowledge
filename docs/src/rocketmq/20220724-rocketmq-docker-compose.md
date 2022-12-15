@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-07-24
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220724-rocketmq-docker-compose.html](http://hscarb.github.io/rocketmq/20220724-rocketmq-docker-compose.html)
+
 # 使用 Docker 和 docker-compose 快速部署 RocketMQ 集群 双主 / DLedger
 
 ## 背景

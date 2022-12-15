@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-04-10
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220410-rocketmq-high-performance-io.html](http://hscarb.github.io/rocketmq/20220410-rocketmq-high-performance-io.html)
+
 # RocketMQ 如何实现高性能消息读写？
 
 [[toc]]

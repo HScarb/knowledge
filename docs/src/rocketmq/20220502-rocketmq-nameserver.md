@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-05-02
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220502-rocketmq-nameserver.html](http://hscarb.github.io/rocketmq/20220502-rocketmq-nameserver.html)
+
 # RocketMQ NameServer 详解 源码剖析
 
 [[toc]]

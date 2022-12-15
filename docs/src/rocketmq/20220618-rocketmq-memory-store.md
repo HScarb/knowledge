@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-06-18
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220618-rocketmq-memory-store.html](http://hscarb.github.io/rocketmq/20220618-rocketmq-memory-store.html)
+
 # RocketMQ Memory Store
 
 ## 背景

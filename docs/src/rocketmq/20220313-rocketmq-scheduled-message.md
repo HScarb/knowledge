@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-03-13
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220313-rocketmq-scheduled-message.html](http://hscarb.github.io/rocketmq/20220313-rocketmq-scheduled-message.html)
+
 # RocketMQ 延迟消息（定时消息）源码解析
 
 [[toc]]

@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-08-27
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220827-rocketmq-consumer-2-struct-and-init.html](http://hscarb.github.io/rocketmq/20220827-rocketmq-consumer-2-struct-and-init.html)
+
 # RocketMQ 消费者（2）客户端设计和启动流程详解 & 源码解析
 
 ## 1. 背景

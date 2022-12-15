@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-08-20
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220820-rocketmq-consumer-1-summary.html](http://hscarb.github.io/rocketmq/20220820-rocketmq-consumer-1-summary.html)
+
 # RocketMQ 消费者（1）概念和消费流程
 
 [[toc]]

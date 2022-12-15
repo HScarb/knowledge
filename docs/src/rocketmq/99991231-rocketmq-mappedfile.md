@@ -4,6 +4,8 @@ author: Scarb
 date: 9999-12-31
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/99991231-rocketmq-mappedfile.html](http://hscarb.github.io/rocketmq/99991231-rocketmq-mappedfile.html)
+
 # RocketMQ 的底层存储实现：内存映射文件 MappedFile、MappedFileQueue 源码剖析
 
 [[toc]]

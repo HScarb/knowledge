@@ -4,6 +4,8 @@ author: Scarb
 date: 2022-04-12
 ---
 
+原文地址：[http://hscarb.github.io/rocketmq/20220412-rocketmq-flexable-scheduled-message.html](http://hscarb.github.io/rocketmq/20220412-rocketmq-flexable-scheduled-message.html)
+
 # RocketMQ 实现高性能定时消息
 
 [[toc]]
