@@ -176,6 +176,7 @@ flushDiskType = ASYNC_FLUSH
 
 # 改为宿主机的 IP
 brokerIP1={宿主机IP}
+# 修改监听端口
 listenPort=10931
 ```
 
