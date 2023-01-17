@@ -1,5 +1,7 @@
 # Kafka和RocketMQ文件存储机制对比
 
+https://t1mek1ller.github.io/2019/11/13/kafka-rocketmq-storage/
+
 Kafka和RocketMQ作为高性能的分布式消息系统，两者高性能的核心都在于基于OS文件系统的持久化设计。Kafka在其官方文档中提到：
 
 > Don't fear the filesystem!
