@@ -4,7 +4,9 @@
 
 ### 1.1 引入原因
 
-在 RocketMQ 4.9.3 版本中，引入了轻量级队列（LMQ）特性。
+在 RocketMQ 4.9.3 版本中，引入了轻量级队列（以下简称 LMQ）特性。
+
+合入PR：https://github.com/apache/rocketmq/pull/3694
 
 这个特性主要是为了支持在一些消息场景下可能存在的大量队列场景。比如 MQTT 的多级主题和 AMQP 的队列，这些队列的数量可能非常多。而 RocketMQ 的 Topic 资源密集，很难支持百万级别甚至更多数量。Light Message Queue 特性就是为了解决 IOT 设备和 AMQP 协议可能需要的海量队列的场景。
 
@@ -12,7 +14,7 @@
 
 #### 1.2.1 Broker 启动配置
 
-broker.conf文件需要增加以下的配置项，开启 LMQ 开关，这样才能识别 LMQ 相关消息属性，分发消息到 LMQ
+broker.conf 文件需要增加以下的配置项，开启 LMQ 开关和多队列转发开关，这样才能识别 LMQ 相关消息属性，分发消息到 LMQ。
 
 ```conf
 enableLmq = true
@@ -21,7 +23,7 @@ enableMultiDispatch = true
 
 #### 1.2.2 生产消息
 
-发送消息的时候通过设置 `INNER_MULTI_DISPATCH` 属性，LMQ 使用逗号分割，queue 前缀必须是 %LMQ%，这样 broker 就可以识别 LMQ。
+发送消息的时候通过设置 `INNER_MULTI_DISPATCH` 属性，分发消息到多个 LMQ，多个 LMQ 之间使用逗号分割，名称前缀必须是 %LMQ%，这样 broker 就可以识别 LMQ。
 
 ```java
 DefaultMQProducer producer = new DefaultMQProducer("please_rename_unique_group_name");
