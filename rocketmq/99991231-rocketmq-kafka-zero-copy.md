@@ -17,4 +17,5 @@
 * [Linux内核Page Cache和Buffer Cache关系及演化历史 - lday](https://lday.me/2019/09/09/0023_linux_page_cache_and_buffer_cache/)
 * [Kafka和RocketMQ底层存储之那些你不知道的事 - yes的练级攻略](https://juejin.cn/post/6854573219157196807)
 * [性能之道：RocketMQ与Kafka高性能设计对比 - 丁威](https://time.geekbang.org/column/article/541813?cid=100114001)
+* [Linux I/O 原理和 Zero-copy 技术全面揭秘](https://strikefreedom.top/archives/linux-io-and-zero-copy)
 
