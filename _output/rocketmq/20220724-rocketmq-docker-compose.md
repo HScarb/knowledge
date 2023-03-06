@@ -158,6 +158,28 @@ brokerIP1={宿主机IP}
     command: sh mqbroker -c /opt/rocketmq-4.9.4/conf/broker.conf
 ```
 
+`docker-compose.yml` 文件映射端口改了之外，还要修改 Broker2 的监听端口
+
+```bash
+$ pwd
+/home/ubuntu/workspace/rocketmq/rocketmq-docker/stages/4.9.4/templates
+$ vim docker-compose/data1/broker/conf/broker.conf
+
+# broker.conf
+brokerClusterName = DefaultCluster
+brokerName = broker-b
+brokerId = 0
+deleteWhen = 04
+fileReservedTime = 48
+brokerRole = ASYNC_MASTER
+flushDiskType = ASYNC_FLUSH
+
+# 改为宿主机的 IP
+brokerIP1={宿主机IP}
+# 修改监听端口
+listenPort=10931
+```
+
 然后可以启动 RocketMQ 容器
 
 ```bash

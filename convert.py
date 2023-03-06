@@ -47,20 +47,27 @@ def find_first_line_start_with_in_file(file_path):
 
 
 def _replace_image_path_to_github(line):
-    pattern = r'!\[(.*)\]\(\.\.(/assets/.+)\)'
+    pattern = r'!\[(.*)\]\(\.\./(assets/.+)\)'
     re_img_url = re.compile(pattern)
     match = re_img_url.match(line)
     if match:
         l = re.sub(pattern=pattern,
-                   repl='![\\1](https://raw.githubusercontent.com/HScarb/knowledge/master\\2)', string=line)
+                   repl='![\\1](https://raw.githubusercontent.com/HScarb/knowledge/master/\\2)', string=line)
         return l
-    else:
-        return line
+    pattern = r'\[(\d+)\]: \.\./(assets/.+)'
+    re_img_url = re.compile(pattern)
+    match = re_img_url.match(line)
+    if match:
+        l = re.sub(pattern=pattern,
+                   repl='[\\1]: https://raw.githubusercontent.com/HScarb/knowledge/master/\\2', string=line)
+        return l
+    return line
 
 
 def _upload_local_image_to_oss(line):
     if line.startswith('[TOC]'):
         return '[[toc]]' + os.linesep
+    # upload image in format like: `![](../assets/xxx)`
     pattern = r'!\[(.*)\]\(\.\./(assets/.+)\)'
     re_img_url = re.compile(pattern)
     match = re_img_url.match(line)
@@ -68,8 +75,15 @@ def _upload_local_image_to_oss(line):
         repl = '![\\1]({})'.format(aliyun_oss.upload_to_oss(match.groups()[1]))
         l = re.sub(pattern=pattern, repl=repl, string=line)
         return l
-    else:
-        return line
+    # upload image in reference pattern like: ![1] ...
+    pattern = r'\[(\d+)\]: \.\./(assets/.+)'
+    re_img_url = re.compile(pattern)
+    match = re_img_url.match(line)
+    if (match):
+        repl = '[\\1]: {}'.format(aliyun_oss.upload_to_oss(match.groups()[1]))
+        l = re.sub(pattern=pattern, repl=repl, string=line)
+        return l
+    return line
 
 
 def convert_file_with_lambda(file_path, output_path, fn, prefix='', suffix=''):
