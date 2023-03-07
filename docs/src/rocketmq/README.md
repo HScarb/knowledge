@@ -46,7 +46,7 @@
 
 [RocketMQ 最佳实践](20221104-rocketmq-best-practice.md)
 
-[RocketMQ 5.0: POP 消费模式 原理详解 & 源码解析](20221212-rocketmq-consumer-7-pop-consume.md)
+[RocketMQ 5.0：POP 消费模式 原理详解 & 源码解析](20221212-rocketmq-consumer-7-pop-consume.md)
 
 [RocketMQ 轻量级队列 Light Message Queue（RIP-28）原理详解 & 源码解析](20230304-rocketmq-light-message-queue.md)
 

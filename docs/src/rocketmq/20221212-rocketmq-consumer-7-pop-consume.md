@@ -1,12 +1,12 @@
 ---
-title: RocketMQ 5.0: POP 消费模式 原理详解 & 源码解析
+title: RocketMQ 5.0：POP 消费模式 原理详解 & 源码解析
 author: Scarb
 date: 2022-12-12
 ---
 
 原文地址：[http://hscarb.github.io/rocketmq/20221212-rocketmq-consumer-7-pop-consume.html](http://hscarb.github.io/rocketmq/20221212-rocketmq-consumer-7-pop-consume.html)
 
-# RocketMQ 5.0: POP 消费模式 原理详解 & 源码解析
+# RocketMQ 5.0：POP 消费模式 原理详解 & 源码解析
 
 ## 1. 背景
 
