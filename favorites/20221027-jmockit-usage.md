@@ -120,29 +120,29 @@ public class MockUpTest {
 }
 ```
 
-原理：  
+原理：
 `JMockit`在`new MockUp()`装载的类中的每个方法（只要是经`@Mock`修饰过的）中插入了一个分支，这个分支就是走`MockUp`类(即`new MockUp{ {}}匿名类`或`extends MockUp的子类`)的mock方法，因此就达到了Mock的目的。
 
-总结：  
-使用MockUp实现类中方法的Mock，  
+总结：
+使用MockUp实现类中方法的Mock， 
 （1）可以对指定方法进行Mock。想Mock哪个方法就在哪个方法上加@Mock。不加则不受影响。  
 （2）对该类的所有对象都生效。无论是依赖注入或者new的多个实例对象，都会生效。
 
-缺点：  
-（1）一个类多个实例情况。因为是对该类的所有实例都有效，所以如果想对一个类的多个实例有不同的操作的时候，这种写法就很不适用了。  
+缺点：
+（1）一个类多个实例情况。因为是对该类的所有实例都有效，所以如果想对一个类的多个实例有不同的操作的时候，这种写法就很不适用了。 
 （2）AOP动态生成的类。通过AOP动态生成的类，很可能我们连名称是什么都不知道，更不用提如何适用MockUp进行Mock啦。  
 （3）需要Mock的方法过多。如果需要Mock的方法过多，我们就要写很多很多代码，很不方便。
 
-适用场景：  
-其实掌`MockUp`和`@Mock`就能帮我们解决大部分的Mock场景，而且使用方式直接明了。  
+适用场景：
+其实掌`MockUp`和`@Mock`就能帮我们解决大部分的Mock场景，而且使用方式直接明了。
 这种方式比较适用于对通用类的方法进行Mock。
 
 ## 2、基于行为的Mock 
 
-根据上面方希，基于状态的Mock(`通过MockUp和@Mock方式`)存在多种无法适用的场景。JMockit还提供基于行为的Mock方式。  
+根据上面方希，基于状态的Mock(`通过MockUp和@Mock方式`)存在多种无法适用的场景。JMockit还提供基于行为的Mock方式。 
 要讲基于状态的Mock，那么肯定是要明白`Expectations`和`@Test`、`@Mocked`、`@Injectable`、`@Capturing`的作用和优缺点。
 
-示例：  
+示例： 
 根据我自己测试来看，如果导包的时候JMockit在JUnit后面，则如果想使用`测试参数`和`@Test`、`@Mocked`、`@Injectable`、`@Capturing`注解，必须添加在测试类上添加`@RunWith(JMockit.class)`注解。否则会不支持测试方法和注解的属性NullPointerException。但是使用上一节的MockUp方式则不必要。
 
 ```java

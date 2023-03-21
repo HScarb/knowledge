@@ -6,11 +6,11 @@ http://www.wangkaixuan.tech/?p=861
 
 在现代多处理器系统中（如下图），每个系统（System）可能安装多个处理器（Processor/Socket）芯片,每个处理器可能包含多个核心（Core），每个核心可能包含多个指令流水线。
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-11.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-11.png)
 
 通过lscpu命令可以查看CPU的信息，下图展示的是某台服务器的信息：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-10.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-10.png)
 
 上述信息表明，该服务器：
 
@@ -27,7 +27,7 @@ http://www.wangkaixuan.tech/?p=861
 
 二是进程/线程如果从一个核心切换至另一个核心上运行，需要面临上下文切换、缓存失效等问题，成本也很高。在对性能要求较高的软件中，这已经是造成时延抖动的一大来源之一。
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-13.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-13.png)
 
 上图展示了一个实测的例子，工作集（working set）较大的进程在进行上下文切换时，其时延可高达50微秒。
 
@@ -35,11 +35,11 @@ http://www.wangkaixuan.tech/?p=861
 
 在Linux系统下，进程都有一个CPU亲和力属性（affinity），通过以下命令可以查询：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-14.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-14.png)
 
 以上查询结果的含义是，进程id为4500的进程，可以在0、1、2、3号CPU上运行，我的笔记本的CPU是四核的，因此默认情况下，进程是可以在任意一个核心上运行的。
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-18.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-18.png)
 
 我们编写下面这样一个程序，观察下Linux进程调度的现象：
 
@@ -93,15 +93,15 @@ int main()
 
 另外，该程序在运行时还会打印自己当前所在的CPU号，运行结果如下：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-15.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-15.png)
 
 可以看到，进程会不断地在不同的CPU之间跳动。
 
 用htop也能观察到同样的结果：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-16.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-16.png)
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-17.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-17.png)
 
 如果这是个时延敏感的系统，这样频繁的在CPU之间跳动，无疑会带来额外的进程上下文切换等开销，造成时延抖动。
 
@@ -111,27 +111,27 @@ int main()
 
 以将上面的进程绑定至CPU 0为例：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-19.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-19.png)
 
 从程序的输出来看，在运行时不会被切换到其他核心上：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-20.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-20.png)
 
 从htop上看也是如此：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-21.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-21.png)
 
 证明绑定的效果达到了。
 
 另外，如果我们想将程序绑定到一个CPU列表上，比如绑定到NUMA node0上的所有CPU，通过taskset命令也可以做到：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-22.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-22.png)
 
 这样的话，进程就只能在0号和2号CPU上运行了。
 
 在实际的生产系统运维过程中，运行程序前是不知道程序的pid的，好在taskset命令还支持启动时指定亲和力，方法如下：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-24.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-24.png)
 
 ## 5. 通过命令绑定(线程)
 
@@ -197,7 +197,7 @@ int main()
 
 这段代码跟前面用的测试代码比较类似，只是把一些命令以及接口从进程换成了线程，运行效果如下：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-25.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-25.png)
 
 可以看到如下信息：
 
@@ -207,31 +207,31 @@ int main()
 
 以下命令可以用来查看进程以及它启动的线程（SPID列为线程id）：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-26.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-26.png)
 
 taskset命令依然适用于线程，执行如下命令查看CPU亲和性设置：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-27.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-27.png)
 
 可以看到进程（37）以及他的两个线程都是可以在所有CPU上运行的。
 
 执行如下命令设置线程的CPU亲和性（线程33绑定到1号CPU，线程34绑定到2号CPU）：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-28.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-28.png)
 
 设定后，线程不再切换：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-29.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-29.png)
 
 htop上也能看出效果：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-30.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-30.png)
 
 美中不足的是，这次我们不能通过taskset+程序名直接启动程序并实现各个线程**绑定不同核心**了，该命令只能支持到进程级别，也就是说它会把进程下的所有线程都设置为相同的亲和度，如下图：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-31.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-31.png)
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-32.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-32.png)
 
 不过也不是没有解决办法，我们可以编写脚本启动并获取线程id，再多次调用taskset，指定线程id，将其绑定到不同核心上即可。
 
@@ -350,9 +350,9 @@ int main()
 
 运行效果如下：
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-33.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-33.png)
 
-![img](http://www.wangkaixuan.tech/wp-content/uploads/2020/11/image-34.png)
+![img](./20220930-cpu-binding-using-taskset.assets/image-34.png)
 
 结果不言而喻，这里仅简单解释下程序：
 

@@ -30,7 +30,7 @@ cd image-build
 sh build-image.sh RMQ-VERSION BASE-IMAGE
 ```
 
-运行脚本之后，会拉取响应版本的 RocketMQ 安装包到本地，然后构建镜像包。
+运行脚本之后，会拉取相应版本的 RocketMQ 安装包到本地，然后构建镜像包。
 
 其中 `RMQ-VERSION` 是需要构建的 RocketMQ 版本，在 [这个地方](https://archive.apache.org/dist/rocketmq/) 查看可选版本列表。
 
