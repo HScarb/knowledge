@@ -1,0 +1,161 @@
+{
+  "main": {
+    "id": "67da8bad7dcceaec",
+    "type": "split",
+    "children": [
+      {
+        "id": "516ae9d28af73c3c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "16e06b16f4bfda26",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "_output/java/20220427-jmh.md",
+                "mode": "source",
+                "source": false
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "ef63cfba6d026bd9",
+    "type": "split",
+    "children": [
+      {
+        "id": "4c3130e65a8e88ce",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "bd682d3fcb277573",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical"
+              }
+            }
+          },
+          {
+            "id": "9ddc6004196adcb9",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              }
+            }
+          },
+          {
+            "id": "522ff787ca3fbbea",
+            "type": "leaf",
+            "state": {
+              "type": "starred",
+              "state": {}
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "7c403bc5faf39910",
+    "type": "split",
+    "children": [
+      {
+        "id": "3ea12d8b4a9f71cb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b39f47b40c62ef22",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "_output/java/20220427-jmh.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              }
+            }
+          },
+          {
+            "id": "9f4692a97e1cb1b5",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "_output/java/20220427-jmh.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              }
+            }
+          },
+          {
+            "id": "b365aef694a7d662",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true
+              }
+            }
+          },
+          {
+            "id": "950cc3df0ebc12f0",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "_output/java/20220427-jmh.md"
+              }
+            }
+          }
+        ],
+        "currentTab": 3
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false
+    }
+  },
+  "active": "950cc3df0ebc12f0",
+  "lastOpenFiles": [
+    "2023-03-29.md",
+    "_output/rocketmq/99991231-rocketmq-kafka-zero-copy.md",
+    "_output/rocketmq/20230304-rocketmq-light-message-queue.md",
+    "_output/rocketmq/20221104-rocketmq-best-practice.md",
+    "_output/rocketmq/20221212-rocketmq-consumer-7-pop-consume.md",
+    "rocketmq/20221104-rocketmq-best-practice.md",
+    "assets/delay_msg_new_activity.drawio.png",
+    "assets/delay_msg_new_pattern.drawio.png",
+    "assets/jmh_process.drawio.png"
+  ]
+}

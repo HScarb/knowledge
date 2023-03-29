@@ -1,6 +1,6 @@
 # Linux I/O 原理和 Zero-copy 技术全面揭秘
 
-https://strikefreedom.top/archives/linux-io-and-zero-cop
+https://strikefreedom.top/archives/linux-io-and-zero-copy
 
 
 ![img](./20230212-linux-io-and-zero-copy.md.assets/linux-zero-copy-stack.png)
