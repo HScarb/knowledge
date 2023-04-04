@@ -91,6 +91,7 @@ AmqpQueue 提供一个索引消息 Topic，用来存储路由到这个队列的 
 在消费端，主要用到了 Pulsar 订阅模型里的 Exclusive（独占订阅）和 Shared（共享订阅）两种类型。
 
 Shared（共享订阅）是可以将所需数量的 consumer 附加到同一订阅。消息以多个 consumer 的循环尝试分发形式传递，并且任何给定的消息仅传递给一个 consumer。当消费者断开连接时，所有传递给它并且未被确认的消息将被重新安排，以便发送给该订阅上剩余的 consumer。
+
 ![image](./20230325-amqp-on-pulsar.assets/bVbODFb.png)
 
 根据 AMQP 协议的定义，队列收到的消息是以轮循方式分配给所有消费者，与 Pulsar Shared 订阅方式吻合。所以在 AoP 的实现中将这种 Shared 订阅方式定义为 default 订阅方式。
