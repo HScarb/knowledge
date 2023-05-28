@@ -160,7 +160,7 @@ reader -> channel -> queue process -> message store
 
 *Credit exhaustion.*
 
- 上图中，Queue 处理缓慢，这就意味着 Queue 可能在较长时间内都没有授予 Channel 新的信用值。Channel 处理比 Queue 快，这样 Channel 的信用值就会先一步耗尽。
+上图中，Queue 处理缓慢，这就意味着 Queue 可能在较长时间内都没有授予 Channel 新的信用值。Channel 处理比 Queue 快，这样 Channel 的信用值就会先一步耗尽。
 
 Channel 信用值耗尽后，Channel 被阻塞，不会接受消息也不会处理消息，这样 Reader 的信用值也将会耗尽。
 
@@ -170,7 +170,7 @@ Channel 信用值耗尽后，Channel 被阻塞，不会接受消息也不会处�
 
 下面可以总结出判断性能瓶颈在何处的结论：
 
-- 当某个 Connection 处于`flow`状态，但这个 Connection 中没有一个 Channel 处于`flow`状态时，这就意味这个 Connection 中有一个或者多个 Channel 出现了性能瓶颈。某些 Channel 进程的运作(比如处理路由逻辑)会使得服务器 CPU 的负载过高从而导致了此种情形 。 尤其是在发送**大量较小的非持久化消息**时，此种情形最易显现。
+- 当某个 Connection 处于`flow`状态，但这个 Connection 中没有一个 Channel 处于`flow`状态时，这就意味这个 Connection 中有一个或者多个 Channel 出现了性能瓶颈。某些 Channel 进程的运作(比如处理路由逻辑)会使得服务器 CPU 的负载过高从而导致了此种情形。尤其是在发送**大量较小的非持久化消息**时，此种情形最易显现。
 - 当某个 Connection 处于`flow`状态 ，并且这个 Connection 中也有若干个 Channel 处于`flow`状态，但没有任何一个对应的队列处于`flow`状态时，这就意味着有一个或者多个队列出现了性能瓶颈。这可能是由于将消息存入队列的过程中引起服务器 CPU 负载过高，或者是将队列中的消息存入磁盘的过程中引起服务器 I/O 负载过高而引起的此种情形。尤其是在发送**大量较小的持久化消息**时，此种情形最易显现。
 - 当某个 Connection 处于`flow`状态，同时这个 Connection 中也有若干个 Channel 处于`flow`状态，井且也有若干个对应的队列处于`flow`状态时，这就意味着在消息持久化时出现了性能瓶颈。在将队列中的消息存入磁盘的过程中引起服务器 I/O 负载过高而引起的此种情形。尤其是在**发送大量较大的持久化消息**时，此种情形最易显现。
 
