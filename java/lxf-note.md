@@ -330,11 +330,237 @@ interface Hello {
     ElementType.CONSTRUCTOR,	// 构造方法
     ElementType.PARAMETER		// 方法参数
 })
-@Retention(RetentionPolicy.RUNTIME)
+@Retention(RetentionPolicy.RUNTIME)	// 注解生命周期，SOURCE：仅编译期；CLASS：仅 class 文件（默认）；RUNTIME：运行期
 public @interface Report {
-    int type() default 0;
+    int type() default 0;		// 参数和默认值
     String level() default "info";
     String value() default "";
 }
+
+@Repeatable						// 可以定义Annotation是否可重复
+@Inherited						// 定义子类是否可继承父类定义的Annotation（父类使用注解子类是否也默认定义）
+```
+
+#### 处理注解
+
+`@Retention` 配置的注解生命周期：
+
+- `SOURCE` 类型的注解在编译期就被丢掉了；主要由编译器使用，一般不用
+- `CLASS` 类型的注解仅保存在class文件中，它们不会被加载进JVM；主要由底层工具库使用，涉及到 class 的加载，一般很少用到
+- `RUNTIME` 类型的注解会被加载进JVM，并且在运行期可以被程序读取；经常用到
+
+利用反射 API 获取 Annotation
+
+- `Class.getAnnotation(Class)`
+- `Field.getAnnotation(Class)`
+- `Method.getAnnotation(Class)`
+- `Constructor.getAnnotation(Class)`
+
+## 6. 泛型
+
+## 7. 集合
+
+## 8. IO
+
+#### File
+
+Java标准库的`java.io.File`对象表示一个文件或者目录：
+
+- 创建`File`对象本身不涉及IO操作；
+- 可以获取路径／绝对路径／规范路径：`getPath()`/`getAbsolutePath()`/`getCanonicalPath()`；
+  - 绝对路径可以表示成 `C:\Windows\System32\..\notepad.exe`，而规范路径就是把 `.` 和 `..` 转换成标准的绝对路径后的路径：`C:\Windows\notepad.exe`。
+- 可以获取目录的文件和子目录：`list()`/`listFiles()`；
+- 可以创建或删除文件和目录。
+  - `createNewFile()` 创建一个新文件，用 `delete()` 删除该文件
+  - `createTempFile()` 来创建一个临时文件，以及 `deleteOnExit()` 在JVM退出时自动删除该文件
+
+* `Path`对象和`File`对象类似，但操作更加简单
+
+#### InputStream
+
+Java标准库的 `java.io.InputStream` 定义了所有输入流的超类。`java.io`包提供了所有同步IO的功能，即读取和写入是阻塞的。
+
+* 最重要的 `read()` 虚拟方法读取输入流的下一个字节，并返回字节表示的 `int` 值（0~255）。读到末尾，返回 `-1`。 
+* 利用缓冲区一次性读取多个字节效率往往要高很多。`InputStream`提供了两个重载方法来支持读取多个字节：
+  - `int read(byte[] b)`：读取若干字节并填充到`byte[]`数组，返回读取的字节数
+  - `int read(byte[] b, int off, int len)`：指定`byte[]`数组的偏移量和最大填充数
+
+派生类：
+
+- `FileInputStream` 实现了文件流输入；
+- `ByteArrayInputStream` 在内存中模拟一个字节流输入。
+
+使用 `try(resource)` 来保证 `InputStream` 正确关闭。
+
+#### OutputStream
+
+Java标准库的`java.io.OutputStream`定义了所有输出流的超类：
+
+* `write(int b)` ：写入`int`最低 8 位表示字节的部分（相当于`b & 0xff`）到一个输出流。
+* `flush()` ：清空输出流，并强制任何正在缓冲的输出字节被写入到底层输出设备。
+  * 一些实现类（`BufferedOutputStream`）为了提高性能和效率，采用了内部缓冲区的机制。可能缓冲区满可能比较慢，需要手动调用`flush`。
+
+派生类：
+
+- `FileOutputStream` 实现了文件流输出；
+- `ByteArrayOutputStream` 在内存中模拟一个字节流输出。
+- `BufferedOutputStream` 使用了内部缓冲区来提高数据写入的效率。
+
+某些情况下需要手动调用`OutputStream`的`flush()`方法来强制输出缓冲区。
+
+使用`try(resource)`来保证`OutputStream`正确关闭。
+
+#### Filter 模式
+
+Java的IO标准库使用Filter模式为`InputStream`和`OutputStream`增加功能：
+
+- 可以把一个`InputStream`和任意个`FilterInputStream`组合；
+- 可以把一个`OutputStream`和任意个`FilterOutputStream`组合。
+
+Filter模式可以在运行期动态增加功能（又称Decorator模式）。
+
+#### 读取 classpath 资源
+
+把资源存储在classpath中可以避免文件路径依赖；
+
+`Class`对象的`getResourceAsStream()`可以从classpath中读取指定资源；
+
+根据classpath读取资源时，需要检查返回的`InputStream`是否为`null`。
+
+#### Reader
+
+`Reader`定义了所有字符输入流的超类，和`InputStream`的区别是，`InputStream`是一个字节流，即以`byte`为单位读取，而`Reader`是一个字符流，即以`char`为单位读取：
+
+- `FileReader`实现了文件字符流输入，使用时需要指定编码；
+- `CharArrayReader`和`StringReader`可以在内存中模拟一个字符流输入。
+
+`Reader`是基于`InputStream`构造的：可以通过`InputStreamReader`在指定编码的同时将任何`InputStream`转换为`Reader`。
+
+总是使用`try (resource)`保证`Reader`正确关闭。
+
+#### Writer
+
+`Writer`定义了所有字符输出流的超类，它是带编码转换器的`OutputStream`，它把`char`转换为`byte`并输出。
+
+- `FileWriter`实现了文件字符流输出；
+- `CharArrayWriter`和`StringWriter`在内存中模拟一个字符流输出。
+
+使用`try (resource)`保证`Writer`正确关闭。
+
+`Writer`是基于`OutputStream`构造的，可以通过`OutputStreamWriter`将`OutputStream`转换为`Writer`，转换时需要指定编码。
+
+## 14. Maven 基础
+
+#### 依赖管理
+
+| scope    | 说明                                          | 示例            |
+| :------- | :-------------------------------------------- | :-------------- |
+| compile  | 编译时需要用到该jar包（默认）                 | commons-logging |
+| test     | 编译Test时需要用到该jar包                     | junit           |
+| runtime  | 编译时不需要，但运行时需要用到                | mysql           |
+| provided | 编译时需要用到，但运行时由JDK或某个服务器提供 | servlet-api     |
+
+#### 构建流程
+
+Maven通过lifecycle、phase和goal来提供标准的构建流程。
+
+- lifecycle相当于Java的package，它包含一个或多个phase；
+- phase相当于Java的class，它包含一个或多个goal；
+- goal相当于class的method，它其实才是真正干活的。
+
+##### phase
+
+Maven的 lifecycle 由一系列 phase 构成，以内置的生命周期 `default` 为例，它包含以下 phase
+
+- validate
+- initialize
+- generate-sources
+- process-sources
+- generate-resources
+- process-resources
+- **compile**
+- process-classes
+- generate-test-sources
+- process-test-sources
+- generate-test-resources
+- process-test-resources
+- test-compile
+- process-test-classes
+- **test**
+- prepare-package
+- **package**
+- pre-integration-test
+- integration-test
+- post-integration-test
+- verify
+- **install**
+- deploy
+
+lifecycle `clean` 会执行3个phase：
+
+- pre-clean
+- clean （注意这个clean不是lifecycle而是phase）
+- post-clean
+
+---
+
+* 使用 `mvn` 这个命令时，后面的参数是 phase，Maven 自动根据生命周期运行到指定的 phase。
+
+* 可以指定多个phase，例如，运行`mvn clean package`，Maven先执行`clean`生命周期并运行到`clean`这个phase，然后执行`default`生命周期并运行到`package`这个phase。
+
+##### goal
+
+执行一个phase又会触发一个或多个goal：
+
+| 执行的Phase | 对应执行的Goal                     |
+| :---------- | :--------------------------------- |
+| compile     | compiler:compile                   |
+| test        | compiler:testCompile surefire:test |
+
+通常情况，我们总是执行phase默认绑定的goal，因此不必指定goal。
+
+#### 使用插件
+
+执行每个phase，都是通过某个插件（plugin）来执行的，Maven本身其实并不知道如何执行`compile`，它只是负责找到对应的`compiler`插件，然后执行默认的`compiler:compile`这个goal来完成编译。
+
+Maven已经内置了一些常用的标准插件：
+
+| 插件名称 | 对应执行的phase |
+| :------- | :-------------- |
+| clean    | clean           |
+| compiler | compile         |
+| surefire | test            |
+| jar      | package         |
+
+如果标准插件无法满足需求，我们还可以使用自定义插件。使用自定义插件的时候，需要声明。例如，使用`maven-shade-plugin`可以创建一个可执行的jar，要使用这个插件，需要在`pom.xml`中声明它：
+
+```xml
+<project>
+    ...
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+                <version>3.2.1</version>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+                            <configuration>
+                                <transformers>
+                                    <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                        <mainClass>com.itranswarp.learnjava.Main</mainClass>
+                                    </transformer>
+                                </transformers>
+                            </configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
 ```
 

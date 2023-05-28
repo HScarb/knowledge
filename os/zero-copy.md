@@ -2,7 +2,11 @@
 
 ## 1. 背景
 
-在接触中间件（尤其是消息队列）的过程中，经常看到如 Kafka、RocketMQ 等中间件使用零拷贝技术大大提升消息读写性能。零拷贝到底是什么？
+在接触中间件的过程中，经常看到中间件使用零拷贝来优化数据访问和传输的性能，降低系统开销。其中尤其是消息队列和数据库是零拷贝的使用大户，经常看到如 Kafka、RocketMQ、Pulsar 等消息中间件；MySQL、Cassandra、Redis、RocksDB 使用零拷贝技术大大提升消息/数据读写性能。此外，网络通信框架、大数据处理等领域也都在不同程度上应用了零拷贝。那么零拷贝是什么？
+
+零拷贝泛指减少 CPU 对数据的重复拷贝的技术。通过零拷贝技术可以降低 CPU 的使用率，提升数据传输效率。
+
+既然零拷贝是为了减少 CPU 对数据的拷贝，那要了解零拷贝就需要先清楚为什么需要拷贝。
 
 ## 2. 前置知识
 
@@ -176,6 +180,8 @@ Linux 提供了多种硬件（磁盘）与主存之间的数据传输机制，�
 
 ### 5.1 RocketMQ
 
+
+
 ### 5.2 Kafka
 
 ## 参考资料
@@ -185,6 +191,6 @@ Linux 提供了多种硬件（磁盘）与主存之间的数据传输机制，�
 * [Linux I/O 原理和 Zero-copy 技术全面揭秘——潘少](https://strikefreedom.top/archives/linux-io-and-zero-copy)
 * [深入剖析Linux IO原理和几种零拷贝机制的实现——零壹技术栈](https://zhuanlan.zhihu.com/p/83398714)
 * [简述 Linux I/O 原理及零拷贝——冯志明](https://xie.infoq.cn/article/34df6603f70c94dc4172c9474)
-* [Linux内核Page cache和Buffer cache关系及演化历史——lday](https://lday.me/2019/09/09/0023_linux_page_cache_and_buffer_cache/)
-* [聊聊Page cache与Kafka之间的事儿——LittleMagic](https://www.jianshu.com/p/92f33aa0ff52)
+* [Linux内核Page Cache和Buffer Cache关系及演化历史——lday](https://lday.me/2019/09/09/0023_linux_page_cache_and_buffer_cache/)
+* [聊聊page cache与Kafka之间的事儿——LittleMagic](https://www.jianshu.com/p/92f33aa0ff52)
 * [文件 I/O 简明概述——spongecaptain](https://github.com/spongecaptain/SimpleClearFileIO)
