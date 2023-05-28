@@ -131,7 +131,7 @@ flushDiskType = ASYNC_FLUSH
 brokerIP1={宿主机IP}
 ```
 
-改成宿主机 IP 之后，发现如果是用 2 主节点，他们的监听 IP 都将会是 `{宿主机IP}:10911`，需要将 broker-b 映射的监听 port 修改一下。
+改成宿主机 IP 之后，发现如果是用 2 个主节点，他们的监听 IP 都将会是 `{宿主机IP}:10911`，需要将 broker-b 映射的监听 port 修改一下。
 修改 `docker-compose.yml`
 
 ```yml
@@ -178,6 +178,8 @@ flushDiskType = ASYNC_FLUSH
 brokerIP1={宿主机IP}
 # 修改监听端口
 listenPort=10931
+fastListenPort=10929
+haListenPort=10932
 ```
 
 然后可以启动 RocketMQ 容器
