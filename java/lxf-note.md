@@ -358,6 +358,58 @@ public @interface Report {
 
 ## 6. 泛型
 
+#### Java 类型系统
+
+```log
+                      ┌────┐
+                      │Type│
+                      └────┘
+                         ▲
+                         │
+   ┌────────────┬────────┴─────────┬───────────────┐
+   │            │                  │               │
+┌─────┐┌─────────────────┐┌────────────────┐┌────────────┐
+│Class││ParameterizedType││GenericArrayType││WildcardType│
+└─────┘└─────────────────┘└────────────────┘└────────────┘
+```
+
+* ParameterizedType: represents a parameterized type such as `Collection<String>`.
+* GenericArrayType: represents an array type whose component type is either a parameterized type or a type variable.
+* GenericArrayType: represents an array type whose component type is either a parameterized type or a type variable.
+
+#### 编写泛型
+
+静态方法：在`static`修饰符后面加一个`<T>`。注意不能引用泛型类型`<T>`，必须定义其他类型（例如`<K>`）来实现静态泛型方法；
+
+#### 擦拭法
+
+擦拭法：Java的泛型是由编译器在编译时实现的，编译器内部永远把所有类型`T`视为`Object`处理，但是，在需要转型的时候，编译器会根据`T`的类型自动为我们实行安全地强制转型。
+
+* 不能是基本类型，例如：`int`；
+* 不能获取带泛型类型的`Class`，例如：`Pair<String>.class`；
+* 不能判断带泛型类型的类型，例如：`x instanceof Pair<String>`；
+* 不能实例化`T`类型，例如：`new T()`。
+
+---
+
+子类可以获取父类的泛型类型`<T>`。
+
+```java
+    Class<IntPair> clazz = IntPair.class;
+    Type t = clazz.getGenericSuperclass();
+    if (t instanceof ParameterizedType) {
+        ParameterizedType pt = (ParameterizedType) t;
+        Type[] types = pt.getActualTypeArguments(); // 可能有多个泛型类型
+        Type firstType = types[0]; // 取第一个泛型类型
+        Class<?> typeClass = (Class<?>) firstType;
+        System.out.println(typeClass); // Integer
+    }
+```
+
+#### extends 通配符（上界通配符）
+
+使用`<? extends Number>`的泛型定义称之为上界通配符（Upper Bounds Wildcards），即把泛型类型`T`的上界限定在`Number`了。
+
 ## 7. 集合
 
 ## 8. IO
@@ -563,4 +615,3 @@ Maven已经内置了一些常用的标准插件：
 	</build>
 </project>
 ```
-

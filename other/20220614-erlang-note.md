@@ -19,7 +19,7 @@ erlang:halt()
 % 注释
 ```
 
-可以挂接一个shell到集群里另一个Erlang节点上运行的Erlang系统，甚至还可以生成一个安全shell（ secure shell，即ssh）直接连接远程计算机上运行的Erlang系统。通过它，可以与Erlang节点系统中任何节点上的任何程序进行交互。
+可以挂接一个shell到集群里另一个Erlang节点上运行的Erlang系统，甚至还可以生成一个安全shell（secure shell，即ssh）直接连接远程计算机上运行的Erlang系统。通过它，可以与Erlang节点系统中任何节点上的任何程序进行交互。
 
 `f()` 命令让shell忘记现有的任何绑定。
 `help()` 命令获取帮助。
@@ -247,8 +247,8 @@ a\x{221E}b
 
 ```erlang
 % geometry.erl
--module(geometry)   % 模块声明，模块名必须与存放该模块的主文件名相同
--export([area/1])   % 导出声明，Name/N 指带有 N 个参数的函数 Name。已导出函数相当于公共方法，未导出函数相当于私有方法
+-module(geometry).   % 模块声明，模块名必须与存放该模块的主文件名相同
+-export([area/1]).   % 导出声明，Name/N 指带有 N 个参数的函数 Name。已导出函数相当于公共方法，未导出函数相当于私有方法
 
 % 函数定义，area 函数有两个子句
 area({rectangle, Width, Height}) -> Width * Height;     % 子句以分号隔开
