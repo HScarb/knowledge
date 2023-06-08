@@ -615,3 +615,457 @@ Maven已经内置了一些常用的标准插件：
 	</build>
 </project>
 ```
+
+#### Maven Wrapper
+
+使用Maven Wrapper，可以为一个项目指定特定的Maven版本。
+
+指定使用的Maven版本，使用下面的安装命令指定版本，例如`3.3.3`：
+
+```bash
+mvn -N io.takari:maven:0.7.6:wrapper -Dmaven=3.3.3
+```
+
+## 15. 网络编程
+
+### 网络编程基础
+
+如果两台计算机位于同一个网络，那么他们之间可以直接通信，因为他们的IP地址前段是相同的，也就是网络号是相同的。网络号是IP地址通过子网掩码过滤后得到的。例如：
+
+某台计算机的IP是`101.202.99.2`，子网掩码是`255.255.255.0`，那么计算该计算机的网络号是：
+
+```
+IP = 101.202.99.2
+Mask = 255.255.255.0
+Network = IP & Mask = 101.202.99.0
+```
+
+### TCP 编程
+
+Socket是一个抽象概念，一个应用程序通过一个Socket来建立一个远程连接，而Socket内部通过TCP/IP协议把数据传输到网络。
+
+一个Socket就是由IP地址和端口号（范围是0～65535）组成，可以把Socket简单理解为IP地址加端口号。端口号总是由操作系统分配，它是一个0～65535之间的数字，其中，小于1024的端口属于*特权端口*，需要管理员权限，大于1024的端口可以由任意用户的应用程序打开。
+
+#### 服务器端
+
+Java标准库提供了`ServerSocket`来实现对指定IP和指定端口的监听。
+
+```java
+public class Server {
+    public static void main(String[] args) throws IOException {
+        // 监听指定端口
+        ServerSocket ss = new ServerSocket(6666); 
+        System.out.println("server is running...");
+        // 使用一个无限循环来处理客户端的连接，接收新的连接，创建一个新的线程处理
+        for (;;) {
+            // 阻塞等待，有新的客户端连接进来后，就返回一个Socket实例，用来和刚连接的客户端通信
+            Socket sock = ss.accept();
+            System.out.println("connected from " + sock.getRemoteSocketAddress());
+            Thread t = new Handler(sock);
+            t.start();
+        }
+    }
+}
+
+class Handler extends Thread {
+    Socket sock;
+
+    public Handler(Socket sock) {
+        this.sock = sock;
+    }
+
+    @Override
+    public void run() {
+        try (InputStream input = this.sock.getInputStream()) {
+            try (OutputStream output = this.sock.getOutputStream()) {
+                handle(input, output);
+            }
+        } catch (Exception e) {
+            try {
+                this.sock.close();
+            } catch (IOException ioe) {
+            }
+            System.out.println("client disconnected.");
+        }
+    }
+
+    private void handle(InputStream input, OutputStream output) throws IOException {
+        var writer = new BufferedWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8));
+        var reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        writer.write("hello\n");
+        writer.flush();
+        for (;;) {
+            String s = reader.readLine();
+            if (s.equals("bye")) {
+                writer.write("bye\n");
+                writer.flush();
+                break;
+            }
+            writer.write("ok: " + s + "\n");
+            writer.flush();
+        }
+    }
+}
+```
+
+#### 客户端
+
+```java
+public class Client {
+    public static void main(String[] args) throws IOException {
+        Socket sock = new Socket("localhost", 6666); // 连接指定服务器和端口
+        try (InputStream input = sock.getInputStream()) {
+            try (OutputStream output = sock.getOutputStream()) {
+                handle(input, output);
+            }
+        }
+        sock.close();
+        System.out.println("disconnected.");
+    }
+
+    private static void handle(InputStream input, OutputStream output) throws IOException {
+        var writer = new BufferedWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8));
+        var reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("[server] " + reader.readLine());
+        for (;;) {
+            System.out.print(">>> "); // 打印提示
+            String s = scanner.nextLine(); // 读取一行输入
+            writer.write(s);
+            writer.newLine();
+            writer.flush();
+            String resp = reader.readLine();
+            System.out.println("<<< " + resp);
+            if (resp.equals("bye")) {
+                break;
+            }
+        }
+    }
+}
+```
+
+### UDP 编程
+
+UDP没有创建连接，数据包也是一次收发一个，所以没有流的概念。
+
+在Java中使用UDP编程，仍然需要使用Socket，因为应用程序在使用UDP时必须指定网络接口（IP）和端口号。注意：UDP端口和TCP端口虽然都使用0~65535，但他们是两套独立的端口，即一个应用程序用TCP占用了端口1234，不影响另一个应用程序用UDP占用端口1234。
+
+#### 服务器端
+
+```java
+DatagramSocket ds = new DatagramSocket(6666); // 监听指定端口
+for (;;) { // 无限循环
+    // 数据缓冲区:
+    byte[] buffer = new byte[1024];
+    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+    ds.receive(packet); // 收取一个UDP数据包
+    // 收取到的数据存储在buffer中，由packet.getOffset(), packet.getLength()指定起始位置和长度
+    // 将其按UTF-8编码转换为String:
+    String s = new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8);
+    // 发送数据:
+    byte[] data = "ACK".getBytes(StandardCharsets.UTF_8);
+    packet.setData(data);
+    ds.send(packet);
+}
+```
+
+#### 客户端
+
+```java
+DatagramSocket ds = new DatagramSocket();
+ds.setSoTimeout(1000);
+ds.connect(InetAddress.getByName("localhost"), 6666); // 连接指定服务器和端口
+// 发送:
+byte[] data = "Hello".getBytes();
+DatagramPacket packet = new DatagramPacket(data, data.length);
+ds.send(packet);
+// 接收:
+byte[] buffer = new byte[1024];
+packet = new DatagramPacket(buffer, buffer.length);
+ds.receive(packet);
+String resp = new String(packet.getData(), packet.getOffset(), packet.getLength());
+ds.disconnect();
+```
+
+- 服务器端用`DatagramSocket(port)`监听端口；
+- 客户端使用`DatagramSocket.connect()`指定远程地址和端口；
+- 双方通过`receive()`和`send()`读写数据；
+- `DatagramSocket`没有IO流接口，数据被直接写入`byte[]`缓冲区。
+
+## 18. 函数式编程
+
+允许把函数本身作为参数传入另一个函数，还允许返回一个函数。
+
+#### Lambda 基础
+
+单方法接口被称为 `FunctionalInterface`。
+
+- Comparator
+- Runnable
+- Callable
+
+接收 `FunctionalInterface` 作为参数的时候，可以把实例化的匿名类改写为Lambda表达式，能大大简化代码。
+
+Lambda表达式的参数和返回值均可由编译器自动推断。
+
+只定义了单方法的接口称之为 `FunctionalInterface`，用注解 `@FunctionalInterface` 标记。
+
+#### 方法引用
+
+`FunctionalInterface`允许传入：
+
+- 接口的实现类（传统写法，代码较繁琐）；
+- Lambda表达式（只需列出参数名，由编译器推断类型）；
+- 符合方法签名的静态方法；
+- 符合方法签名的实例方法（实例类型被看做第一个参数类型）；
+- 符合方法签名的构造方法（实例类型被看做返回类型）。
+
+`FunctionalInterface`不强制继承关系，不需要方法名称相同，只要求方法参数（类型和数量）与方法返回类型相同，即认为方法签名相同。
+
+## 20. Web 开发
+
+### Servlet 入门
+
+```ascii
+                 ┌───────────┐
+                 │My Servlet │
+                 ├───────────┤
+                 │Servlet API│
+┌───────┐  HTTP  ├───────────┤
+│Browser│<──────>│Web Server │
+└───────┘        └───────────┘
+```
+
+Web服务器处理TCP连接，解析HTTP协议。它实现了 Servlet API，使用户能够编写自己的 Servlet 来处理 HTTP 请求。
+
+## 21. Spring 开发
+
+### 21.1 IoC 容器
+
+#### IoC 原理
+
+组件中用 `new` 方式创建依赖实例的缺点：
+
+* 高耦合性
+* 难以测试：需要模拟依赖类的行为
+* 资源管理问题：某些资源每次都实例化可能导致过载
+* 重复代码
+* 难以管理依赖关系
+
+在 IoC 模式下，控制权从应用程序转移到了 IoC 容器，所有的组件不再由应用程序自己创建和配置，而是由 IoC 容器负责，这样，应用程序只需要直接使用已经创建好并配置好的组件。它解决了以下问题：
+
+- 谁负责创建组件？
+- 谁负责根据依赖关系组装组件？
+- 销毁时，如何按依赖顺序正确销毁？
+
+在Spring的IoC容器中，实现IoC的主要机制是依赖注入，依赖注入可以通过多种方式实现：
+
+- Setter 注入：通过 setter 方法注入依赖。
+- 构造方法注入：通过构造方法注入依赖。
+
+在设计上，Spring的IoC容器是一个高度可扩展的无侵入容器。所谓无侵入，是指应用程序的组件无需实现Spring的特定接口，或者说，组件根本不知道自己在Spring的容器中运行。这种无侵入的设计有以下好处：
+
+1. 应用程序组件既可以在Spring的IoC容器中运行，也可以自己编写代码自行组装配置；
+2. 测试的时候并不依赖Spring容器，可单独进行测试，大大提高了开发效率。
+
+#### 定制 Bean
+
+Spring默认使用Singleton创建Bean，也可指定Scope为Prototype；
+
+可将相同类型的Bean注入`List`或数组；
+
+可用`@Autowired(required=false)`允许可选注入；
+
+可用带`@Bean`标注的方法创建Bean；
+
+可使用`@PostConstruct`和`@PreDestroy`对Bean进行初始化和清理；
+
+相同类型的Bean只能有一个指定为`@Primary`，其他必须用`@Quanlifier("beanName")`指定别名；
+
+注入时，可通过别名`@Quanlifier("beanName")`指定某个Bean；
+
+可以定义`FactoryBean`来使用工厂模式创建Bean。
+
+#### 使用 Resource
+
+Spring提供了Resource类便于注入资源文件。
+
+最常用的注入是通过classpath以`classpath:/path/to/file`的形式注入。
+
+#### 使用条件装配
+
+Spring允许通过`@Profile`配置不同的Bean；
+
+Spring还提供了`@Conditional`来进行条件装配，Spring Boot在此基础上进一步提供了基于配置、Class、Bean等条件进行装配。
+
+### 21.2 使用 AOP
+
+而AOP是一种新的编程方式，它和OOP不同，OOP把系统看作多个对象的交互，AOP把系统分解为不同的关注点，或者称之为切面（Aspect）。
+
+如何把切面织入到核心逻辑中？这正是AOP需要解决的问题。换句话说，如果客户端获得了`BookService`的引用，当调用`bookService.createBook()`时，如何对调用方法进行拦截，并在拦截前后进行安全检查、日志、事务等处理，就相当于完成了所有业务功能。
+
+在Java平台上，对于AOP的织入，有3种方式：
+
+1. 编译期：在编译时，由编译器把切面调用编译进字节码，这种方式需要定义新的关键字并扩展编译器，AspectJ就扩展了Java编译器，使用关键字aspect来实现织入；
+2. 类加载器：在目标类被装载到JVM时，通过一个特殊的类加载器，对目标类的字节码重新“增强”；
+3. 运行期：目标对象和切面都是普通Java类，通过JVM的动态代理功能或者第三方库实现运行期动态织入。
+
+最简单的方式是第三种，Spring的AOP实现就是基于JVM的动态代理。由于JVM的动态代理要求必须实现接口，如果一个普通类没有业务接口，就需要通过[CGLIB](https://github.com/cglib/cglib)或者[Javassist](https://www.javassist.org/)这些第三方库实现。
+
+### 21.3 访问数据库
+
+#### 使用声明式事务
+
+默认的事务传播级别是`REQUIRED`，它满足绝大部分的需求。还有一些其他的传播级别：
+
+* `SUPPORTS`：表示如果有事务，就加入到当前事务，如果没有，那也不开启事务执行。这种传播级别可用于查询方法，因为SELECT语句既可以在事务内执行，也可以不需要事务；
+
+* `MANDATORY`：表示必须要存在当前事务并加入执行，否则将抛出异常。这种传播级别可用于核心更新逻辑，比如用户余额变更，它总是被其他事务方法调用，不能直接由非事务方法调用；
+
+* `REQUIRES_NEW`：表示不管当前有没有事务，都必须开启一个新的事务执行。如果当前已经有事务，那么当前事务会挂起，等新事务完成后，再恢复执行；
+
+* `NOT_SUPPORTED`：表示不支持事务，如果当前有事务，那么当前事务会挂起，等这个方法执行完成后，再恢复执行；
+
+* `NEVER`：和`NOT_SUPPORTED`相比，它不但不支持事务，而且在监测到当前有事务时，会抛出异常拒绝执行；
+
+* `NESTED`：表示如果当前有事务，则开启一个嵌套级别事务，如果当前没有事务，则开启一个新事务。
+
+上面这么多种事务的传播级别，其实默认的`REQUIRED`已经满足绝大部分需求，`SUPPORTS`和`REQUIRES_NEW`在少数情况下会用到，其他基本不会用到，因为把事务搞得越复杂，不仅逻辑跟着复杂，而且速度也会越慢。
+
+---
+
+Spring提供的声明式事务极大地方便了在数据库中使用事务。Spring使用声明式事务，最终也是通过执行JDBC事务来实现功能的，原理是使用 `ThreadLocal`。
+
+Spring总是把JDBC相关的`Connection`和`TransactionStatus`实例绑定到`ThreadLocal`。如果一个事务方法从`ThreadLocal`未取到事务，那么它会打开一个新的JDBC连接，同时开启一个新的事务，否则，它就直接使用从`ThreadLocal`获取的JDBC连接以及`TransactionStatus`。因此，事务只能在当前线程传播，无法跨线程传播。
+
+要实现跨线程传播事务，要想办法把当前线程绑定到`ThreadLocal`的`Connection`和`TransactionStatus`实例传递给新线程，但实现起来非常复杂，根据异常回滚更加复杂，不推荐自己去实现。
+
+#### 集成 Hibernate
+
+##### 初始化
+
+在Hibernate中，`Session`是封装了一个JDBC `Connection`的实例，而`SessionFactory`是封装了JDBC `DataSource`的实例，即`SessionFactory`持有连接池，每次需要操作数据库的时候，`SessionFactory`创建一个新的`Session`，相当于从连接池获取到一个新的`Connection`。
+
+```java
+public class AppConfig {
+    @Bean
+    LocalSessionFactoryBean createSessionFactory(@Autowired DataSource dataSource) {
+        var props = new Properties();
+        props.setProperty("hibernate.hbm2ddl.auto", "update"); // 生产环境不要使用
+        props.setProperty("hibernate.dialect", "org.hibernate.dialect.HSQLDialect");
+        props.setProperty("hibernate.show_sql", "true");
+        var sessionFactoryBean = new LocalSessionFactoryBean();
+        sessionFactoryBean.setDataSource(dataSource);
+        // 扫描指定的package获取所有entity class:
+        sessionFactoryBean.setPackagesToScan("com.itranswarp.learnjava.entity");
+        sessionFactoryBean.setHibernateProperties(props);
+        return sessionFactoryBean;
+    }
+}
+```
+
+##### 设置映射关系
+
+```java
+// 设置映射关系
+@Entity
+@Table(name="users)
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(nullable = false, updatable = false)
+    public Long getId() { ... }
+
+    @Column(nullable = false, unique = true, length = 100)
+    public String getEmail() { ... }
+
+    @Column(nullable = false, length = 100)
+    public String getPassword() { ... }
+
+    @Column(nullable = false, length = 100)
+    public String getName() { ... }
+
+    @Column(nullable = false, updatable = false)
+    public Long getCreatedAt() { ... }
+}
+```
+
+##### 基本操作
+
+```java
+// insert
+sessionFactory.getCurrentSession().persist(user);
+// delete
+User user = sessionFactory.getCurrentSession().byId(User.class).load(id);
+if (user != null) {
+    sessionFactory.getCurrentSession().remove(user);
+    return true;
+}
+// delete
+User user = sessionFactory.getCurrentSession().byId(User.class).load(id);
+user.setName(name);
+sessionFactory.getCurrentSession().merge(user);
+```
+
+##### 使用高级查询（HQL）
+
+```java
+List<User> list = sessionFactory.getCurrentSession()
+        .createQuery("from User u where u.email = ?1 and u.password = ?2", User.class)
+        .setParameter(1, email).setParameter(2, password)
+        .list();
+```
+
+和SQL相比，HQL使用类名和属性名，由Hibernate自动转换为实际的表名和列名。详细的HQL语法可以参考[Hibernate文档](https://docs.jboss.org/hibernate/orm/6.1/userguide/html_single/Hibernate_User_Guide.html#query-language)。
+
+---
+
+`NamedQuery` 可以在代码中直观地看到查询语句。
+
+```java
+@NamedQueries(
+    @NamedQuery(
+        // 查询名称:
+        name = "login",
+        // 查询语句:
+        query = "SELECT u FROM User u WHERE u.email = :e AND u.password = :pwd"
+    )
+)
+@Entity
+public class User extends AbstractEntity {
+    ...
+}
+```
+
+```java
+public User login(String email, String password) {
+    List<User> list = sessionFactory.getCurrentSession()
+        .createNamedQuery("login", User.class) // 创建NamedQuery
+        .setParameter("e", email) // 绑定e参数
+        .setParameter("pwd", password) // 绑定pwd参数
+        .list();
+    return list.isEmpty() ? null : list.get(0);
+}
+```
+
+### 21.4 开发 Web 应用
+
+Spring虽然都可以集成任何Web框架，但是，Spring本身也开发了一个MVC框架，就叫[Spring MVC](https://docs.spring.io/spring/docs/current/spring-framework-reference/web.html)。
+
+## 22. Spring Boot 开发
+
+#### 使用开发者工具
+
+Spring Boot提供了一个开发者工具，可以监控classpath路径上的文件。只要源码或配置文件发生修改，Spring Boot应用可以自动重启。
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-devtools</artifactId>
+</dependency>
+```
+
+默认配置下，针对`/static`、`/public`和`/templates`目录中的文件修改，不会自动重启，因为禁用缓存后，这些文件的修改可以实时更新。
+
+
+
