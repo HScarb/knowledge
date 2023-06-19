@@ -56,21 +56,21 @@ Rocketmq 4.x 的延迟消息的原理简单来说是：将延迟消息先不存�
 
 ![](../assets/rocketmq-timer/delay-msg-queue.drawio.png)
 
-队列中的第一个消息延迟 100s，会阻塞后续消息的投递。
+队列中的第一个消息延迟 100s，从队列头开始扫描，需要等待第一个消息先投递，从队列中弹出，后面的消息才能投递。所以第一条消息会阻塞后续消息的投递。
 
-所以 Rocketmq 4.x 的延迟 Topic 中包含 18 个队列，每个队列代表一个延迟等级，对应一个延迟时间，用一个周期性任务去扫描。这样就避免了这个问题。
+所以 Rocketmq 4.x 的延迟 Topic 中包含 18 个队列，每个队列代表一个延迟等级，对应一个固定的延迟时长，用一个周期性任务去扫描。这样就避免了这个问题。
 
-要任意时间定时消息不可能无限制地增加延迟时间对应的队列数量，这是一个难点。
+但任意时间定时消息不可能无限制地增加延迟时长对应的队列数量，这是一个难点。
 
 #### 2.1.2 难点2：定时消息的存储和老化
 
-我们知道 Rocketmq 的消息是有老化时间的，默认时间为 3 天。这就意味着延迟时间超过 3 天的消息会被老化清楚，永远无法投递。
+我们知道 Rocketmq 的消息是有老化时间的，默认时间为 3 天。这就意味着延迟时间超过 3 天的消息可能会被老化清除，永远无法投递。
 
 让定时消息不受老化时间的限制，这也是一个难点。
 
 #### 2.1.3 难点3：大量定时消息的极端情况
 
-在定时消息场景下，会出现一种情况，就是在同一时刻定时了超大量的消息，需要在那一瞬间投递（比如在 8 点定时了 1 亿条消息）。
+在定时消息场景下有一种极端情况，就是在同一时刻定时了超大量的消息，需要在一瞬间投递（比如在 8 点定时了 1 亿条消息）。
 
 如果不进行流控直接写入，会把 Rocketmq 冲垮。
 
@@ -80,19 +80,20 @@ Rocketmq 4.x 的延迟消息的原理简单来说是：将延迟消息先不存�
 
 实现任意时间的定时的要点在于知道在某一时刻需要投递哪些消息，以及破除一个队列只能保存同一个延迟等级的消息的限制。
 
-联想 Rocketmq 的消息索引文件（详细原理可以看这篇文章 [RocketMQ IndexFile 索引文件](https://github.com/HScarb/knowledge/blob/master/rocketmq/20220301-rocketmq-indexfile.md)），它用来提供根据 MessageKey 查询消息的能力。可以把它看作一个大的 HashMap，Key 是 MessageKey，Value 是一个 LinkedList，包含这个 MessageKey 的所有消息的存储位置。
+联想 Rocketmq 的索引文件 `IndexFile`，可以通过索引文件来辅助定时消息的查询。需要建立这样的一个索引结构：Key 是时间戳，Value 表示这个时间要投递的所有定时消息。
 
-同样的，可以用一个索引文件来方便定时消息的查询。Key 是时间戳，Value 表示这个时间要投递的所有定时消息（的存储位置）。
+```java
+Map<Long /* 投递时间戳 */, List<Message /* 被定时的消息 */>>
+```
 
-这里可以和 IndexFIle 索引文件一样用 HashMap 的形式去实现，而 Rocketmq 5.x 的定时消息选择了时间轮的形式。
+把这个索引结构以文件的形式实现，这个结构里的 Message 可以仅保存消息的存储位置，投递的时候再查出来。
 
-时间轮的好处是可以比较方便地表示时间的推进，并且它的时间戳 Key 可以复用。
-
-
+#### 2.2.2 
 
 ## 3. 
 
 ## 参考资料
 
+* [PR: [RIP-43] Support Timing Messages with Arbitrary Time Delay](https://github.com/apache/rocketmq/pull/4642/files)
 * [RIP-43 Support timing messages with arbitrary time delay](https://shimo.im/docs/gXqme9PKKpIeD7qo/read)
 * [社区在讨论什么？《Support Timing Messages with Arbitrary Time Delay》](https://mp.weixin.qq.com/s/iZL8M88gF7s5NmW7DYyYDQ)
