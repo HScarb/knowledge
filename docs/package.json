@@ -9,8 +9,8 @@
   },
   "repository": "https://github.com/HScarb/knowledge/knowledge",
   "scripts": {
-    "dev": "export SET NODE_OPTIONS=--openssl-legacy-provider && vuepress dev src --temp .temp",
-    "build": "export SET NODE_OPTIONS=--openssl-legacy-provider && vuepress build src"
+    "dev": "vuepress dev src --temp .temp",
+    "build": "vuepress build src"
   },
   "license": "MIT",
   "devDependencies": {
