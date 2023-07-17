@@ -30,7 +30,7 @@ RocketMQ 提供了 2 种方式，能够让 Push 消费切换为使用 Pop 模式
 mqadmin setConsumeMode -c cluster -t topic -g group -m POP -q 8
 ```
 
-以下为参数含义
+以下为参数含义，其中 `popShareQueueNum` 表示 1 个队列最多可以被 N 个消费者同时消费。
 
 ```java
 opt = new Option("c", "clusterName", true, "create subscription group to which cluster");
