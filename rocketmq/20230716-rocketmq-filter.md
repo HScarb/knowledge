@@ -58,7 +58,14 @@ SQL92 过滤比 Tag 过滤更灵活，它可以使用SQL92语法作为过滤规�
 enablePropertyFilter=true
 ```
 
-它的过滤语法规则如下：
+如果要开启布隆过滤器进行双层过滤，需要设置如下配置。
+
+```properties
+enableCalcFilterBitMap=true		# 设置在构造消费队列时，用布隆过滤器计算匹配过滤条件的消费组，构造成二进制数组
+enableConsumeQueueExt=true		# 启用消费队列扩展存储，二进制数组会存到扩展存储中
+```
+
+SQL92 的过滤语法规则如下：
 
 | 语法                    | 说明                                                         | 示例                                                         |
 | ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -192,7 +199,9 @@ Rocketmq 的消费队列中专门开辟了 8 个字节的存储位置用于存�
 
 在消费者上报心跳，注册消费者时就会把过滤信息（Tag 的 Hash 码）生成，放入 `ConsumerManager` 中。
 
-在 Broker 端，它只在 `isMatchedByConsumeQueue` 方法中判断该消息 Tag 的 Hash 码是否在过滤规则允许的 Tag Hash 码列表中，如果在则表示该消息可能符合过滤条件，返回给消费者。
+拉取消息时会先根据拉取消息的消费者信息，构造 `ExpressionMessageFilter`。
+
+在 Broker 端，调用 `ExpressionMessageFilter#isMatchedByConsumeQueue` 方法判断该消息 Tag 的 Hash 码是否在过滤规则允许的 Tag Hash 码列表中，如果在则表示该消息**可能**符合过滤条件，返回给消费者。
 
 在消费者端处理拉取结果的方法 `PullApiWrapper#processPullResult` 中，再进行精确判断，如果过滤匹配的 Tag 字符串列表中包含消息的 Tag，则返回给消费者消费。
 
@@ -210,7 +219,7 @@ Rocketmq 从 ActiveMQ 中拿到的 `SelectorParser.jj` 语法标准文件，在�
 
 其中 `SelectorParser.java` 是主要的解析器类，会将 SQL92 表达式解析成一个抽象语法树（由 `Expression` 对象组成）。
 
-`SqlFilter#compile` 作为表达式编译的入口，内部调用 `SelectorParser#parse`  方法，将 SQL92 语句编译成 `Expression` 表达式对象。
+`SqlFilter#compile` 作为表达式编译的入口，内部调用 `SelectorParser#parse` 方法，将 SQL92 语句编译成 `Expression` 表达式对象。
 
 Rocketmq 实现了一些基本的 `Expression` 用以执行基本的 SQL92 过滤逻辑：
 
@@ -220,17 +229,462 @@ Rocketmq 实现了一些基本的 `Expression` 用以执行基本的 SQL92 过�
 
 编译 SQL92 `Expression` 表达式的时机与 Tag 表达式类似。消费者上报心跳，注册消费者时会预先编译好，放在 `ConsumerFilterManager` 中。
 
-在 Broker 端处理拉取消息请求时，先判断拉取消息请求是否带有过滤信息，如果带有，则根据过滤信息编译；否则从 `ConsumerFilterManager` 中获取编译好的。
+在 Broker 端处理拉取消息请求时，先判断拉取消息请求是否带有过滤信息，如果带有，则根据过滤信息编译；否则从 `ConsumerFilterManager` 中获取编译好的 `Expression` 树。
 
 #### 3.4.2 布隆过滤器 BloomFilter
 
-#### 3.4.3 生成二进制位映射表
+> 注意，仅 isEnableCalcFilterBitMap 配置为 true 时才使用布隆过滤器进行第一层过滤。否则仅进行第二层过滤。
+
+SQL92 的二层过滤中，第一层利用布隆过滤器判断这个消息是否大概率要被对应的消费者拉取，第二层则执行精确的过滤匹配。
+
+布隆过滤器的优点是它的空间占用率非常小，缺点则是只能判断出元素**大概率**存在集合中，但是无法确定。
+
+----
+
+它主要提供了两个方法：`put` 用来将元素加入到集合中，`contains` 判断元素在集合中是否大概率存在，一般不能删除数据。
+
+存入的原理是：对要插入的元素进行 K 次 Hash 运算，将每次运算结果保存到一个二进制数组的一个下标中。
+
+![img](./99991231-rocketmq-filter.assets/1200.png)
+
+查询的原理是：对需要查询的数据进行 K 次同样的 Hash 运算，判断运算的结果是否都为 1。
+
+#### 3.4.3 生成布隆过滤器位数组
+
+Rocketmq 的布隆过滤器实现与 Guava 的不太一样，它没有把二进制位数组 `BitsArray` 存到布隆过滤器中，而是无状态的，每次运算都需要传入这个数组运算函数。
+
+它的方法：
+
+* put 方法：
+
+  ```java
+  // 将 filterData 存入 BitsArray
+  void hashTo(BloomFilterData filterData, BitsArray bits)
+  ```
+
+* contains 方法：
+
+  ```java
+  // 检查给定的 BloomFilterData 对应数据是否在 BitsArray 中
+  boolean isHit(BloomFilterData filterData, BitsArray bits)
+  ```
+
+* `bits`：存储**所有**消费者名称经过 K 次 Hash 结果的位数组
+
+  * 在消息生产时在 `reput` 步骤由 `CommitLogDispatcherCalcBitMap` 中调用 `hashTo` 生成，存到 `ConsumeQueueExt` 中。
+  * 遍历所有消费者（的过滤信息），将所有消费者名称经过 K 次 Hash，存入位数组。（相当于将所有需要过滤的消费者名称存入布隆过滤器）
+
+* `BloomFilterData`：本次拉取消息的消费者的过滤信息
+
+  * 在消费者注册时根据消费者名称和订阅的 Topic 生成。
+
+    ```java
+    BloomFilterData bloomFilterData = bloomFilter.generate(consumerGroup + "#" + topic);
+    ```
+
+  * 其中包含有消费者名称经过 K 次 Hash 得到的位数组 `int[] bitPos` 
+
+    ```java
+    class BloomFilterData {
+        private int[] bitPos;
+        private int bitNum;
+    }
+    ```
+
 
 #### 3.4.4 消息过滤
 
+消息的两层过滤与 Tag 过滤一样，在拉消息方法中被调用。
+
+![](./99991231-rocketmq-filter.assets/rocketmq-filter-tag-hierarchy.png)
+
+在拉取消息处理方法中，根据拉取消息的消费者信息，从 `ConsumerFilterManager` 中获取过滤数据，生成 `ExpressionMessageFilter` 对象。
+
+先调用 `ExpressionMessageFilter#isMatchedByConsumeQueue`，利用布隆过滤器进行初筛。判断拉消息的消费者是否可能需要消费到这条消息。
+
+然后调用 `isMatchedByCommitLog` 方法，用编译好的 `Expression` 进行过滤逻辑判断。
+
 ## 4. 源码解析
 
+### 4.1 Tag 过滤
 
+#### 4.1.1 Broker 端过滤
+
+```java
+// ExpressMessageFilter.java
+/**
+ * 根据 ConsumeQueue 中的属性哈希码进行过滤
+ *
+ * @param tagsCode tagsCode
+ * @param cqExtUnit extend unit of consume queue
+ * @return
+ */
+@Override
+public boolean isMatchedByConsumeQueue(Long tagsCode, ConsumeQueueExt.CqExtUnit cqExtUnit) {
+    if (null == subscriptionData) {
+        return true;
+    }
+
+    // 如果是类过滤模式，直接返回 true
+    if (subscriptionData.isClassFilterMode()) {
+        return true;
+    }
+
+    // Tag 过滤
+    // by tags code.
+    if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
+
+        // 消息发送时没有设置 Tag，返回 true
+        if (tagsCode == null) {
+            return true;
+        }
+
+        // 允许任意 Tag，返回 true
+        if (subscriptionData.getSubString().equals(SubscriptionData.SUB_ALL)) {
+            return true;
+        }
+
+        // 返回过滤数据的 Tag 哈希码表中是否包含发送消息的哈希码
+        return subscriptionData.getCodeSet().contains(tagsCode.intValue());
+    } else {
+        // SQL92 表达式过滤
+        // ...
+    }
+
+    return true;
+}
+```
+
+#### 4.1.2 客户端过滤
+
+```java
+// PullAPIWrapper.java
+/**
+ * 拉取消息结果处理
+ * 消息过滤 & 将二进制消息解析成对象
+ *
+ * @param mq
+ * @param pullResult
+ * @param subscriptionData
+ * @return
+ */
+public PullResult processPullResult(final MessageQueue mq, final PullResult pullResult,
+    final SubscriptionData subscriptionData) {
+    PullResultExt pullResultExt = (PullResultExt) pullResult;
+
+    // 根据拉取结果，更新下次从哪个节点拉取消息
+    this.updatePullFromWhichNode(mq, pullResultExt.getSuggestWhichBrokerId());
+    // 拉取成功
+    if (PullStatus.FOUND == pullResult.getPullStatus()) {
+        ByteBuffer byteBuffer = ByteBuffer.wrap(pullResultExt.getMessageBinary());
+        List<MessageExt> msgList = MessageDecoder.decodes(byteBuffer);
+
+        List<MessageExt> msgListFilterAgain = msgList;
+        if (!subscriptionData.getTagsSet().isEmpty() && !subscriptionData.isClassFilterMode()) {
+            // Tag 过滤模式
+            msgListFilterAgain = new ArrayList<MessageExt>(msgList.size());
+            for (MessageExt msg : msgList) {
+                if (msg.getTags() != null) {
+                    // 如果过滤的 tag 集合中包含消息的 tag，则返回给消费者，否则不消费
+                    if (subscriptionData.getTagsSet().contains(msg.getTags())) {
+                        msgListFilterAgain.add(msg);
+                    }
+                }
+            }
+        }
+        // ...
+    }
+    
+    pullResultExt.setMessageBinary(null);
+
+    return pullResult;
+}
+```
+
+### 4.2 SQL92 过滤
+
+#### 4.2.1 注册过滤信息
+
+```java
+// DefaultConsumerIdsChangeListener.java
+/**
+ * 消费者注册、注销，或连接断开时触发
+ */
+@Override
+public void handle(ConsumerGroupEvent event, String group, Object... args) {
+    if (event == null) {
+        return;
+    }
+    switch (event) {
+        case CHANGE:
+            // 如果发生变化，向所有消费者发送重平衡请求
+            if (args == null || args.length < 1) {
+                return;
+            }
+            // 获取消费组中所有消费者的 Channel
+            List<Channel> channels = (List<Channel>) args[0];
+            if (channels != null && brokerController.getBrokerConfig().isNotifyConsumerIdsChangedEnable()) {
+                for (Channel chl : channels) {
+                    // 发送重平衡请求
+                    this.brokerController.getBroker2Client().notifyConsumerIdsChanged(chl, group);
+                }
+            }
+            break;
+        case UNREGISTER:
+            this.brokerController.getConsumerFilterManager().unRegister(group);
+            break;
+        case REGISTER:
+            if (args == null || args.length < 1) {
+                return;
+            }
+            Collection<SubscriptionData> subscriptionDataList = (Collection<SubscriptionData>) args[0];
+            // 新消费者注册，更新过滤信息
+            this.brokerController.getConsumerFilterManager().register(group, subscriptionDataList);
+            break;
+        default:
+            throw new RuntimeException("Unknown event " + event);
+    }
+}
+```
+
+```java
+// ConsumerFilterManager.java
+/**
+ * 注册 SQL92 的过滤信息，构造布隆过滤器
+ *
+ * @param topic
+ * @param consumerGroup
+ * @param expression
+ * @param type
+ * @param clientVersion
+ * @return
+ */
+public boolean register(final String topic, final String consumerGroup, final String expression,
+    final String type, final long clientVersion) {
+    if (ExpressionType.isTagType(type)) {
+        return false;
+    }
+
+    if (expression == null || expression.length() == 0) {
+        return false;
+    }
+
+    FilterDataMapByTopic filterDataMapByTopic = this.filterDataByTopic.get(topic);
+
+    if (filterDataMapByTopic == null) {
+        FilterDataMapByTopic temp = new FilterDataMapByTopic(topic);
+        FilterDataMapByTopic prev = this.filterDataByTopic.putIfAbsent(topic, temp);
+        filterDataMapByTopic = prev != null ? prev : temp;
+    }
+
+    // 生成布隆过滤器的位数据，保存到消费者过滤信息中。
+    BloomFilterData bloomFilterData = bloomFilter.generate(consumerGroup + "#" + topic);
+	// 生成消费者过滤信息，保存到 Broker 的 ConsumerFilterManager 过滤信息管理器
+    return filterDataMapByTopic.register(consumerGroup, expression, type, bloomFilterData, clientVersion);
+}
+```
+
+#### 4.2.2 消息生产时构建布隆过滤器数据
+
+```java
+// CommitLogDispatcherCalcBitMap.java
+@Override
+public void dispatch(DispatchRequest request) {
+    // enableCalcFilterBitMap 配置开启时才创建位数组
+    if (!this.brokerConfig.isEnableCalcFilterBitMap()) {
+        return;
+    }
+
+    try {
+
+        Collection<ConsumerFilterData> filterDatas = consumerFilterManager.get(request.getTopic());
+
+        if (filterDatas == null || filterDatas.isEmpty()) {
+            return;
+        }
+
+        Iterator<ConsumerFilterData> iterator = filterDatas.iterator();
+        BitsArray filterBitMap = BitsArray.create(
+            this.consumerFilterManager.getBloomFilter().getM()
+        );
+
+        long startTime = System.currentTimeMillis();
+        // 遍历所有注册的带有 SQL92 表达式的消费者，判断是否通过过滤，如果没有被过滤，则消费者名称的位映射，放入到 filterBitMap 中
+        while (iterator.hasNext()) {
+            ConsumerFilterData filterData = iterator.next();
+
+            if (filterData.getCompiledExpression() == null) {
+                log.error("[BUG] Consumer in filter manager has no compiled expression! {}", filterData);
+                continue;
+            }
+
+            if (filterData.getBloomFilterData() == null) {
+                log.error("[BUG] Consumer in filter manager has no bloom data! {}", filterData);
+                continue;
+            }
+
+            Object ret = null;
+            try {
+                MessageEvaluationContext context = new MessageEvaluationContext(request.getPropertiesMap());
+
+                ret = filterData.getCompiledExpression().evaluate(context);
+            } catch (Throwable e) {
+                log.error("Calc filter bit map error!commitLogOffset={}, consumer={}, {}", request.getCommitLogOffset(), filterData, e);
+            }
+
+            log.debug("Result of Calc bit map:ret={}, data={}, props={}, offset={}", ret, filterData, request.getPropertiesMap(), request.getCommitLogOffset());
+
+            // eval true
+            if (ret != null && ret instanceof Boolean && (Boolean) ret) {
+                // 将消费组对应的位数据（由 "消费组#Topic" Hash 生成）保存到位数组中
+                consumerFilterManager.getBloomFilter().hashTo(
+                    filterData.getBloomFilterData(),
+                    filterBitMap
+                );
+            }
+        }
+
+        // 将所有没有被过滤的消费者名称计算出的位映射，放入 DispatchRequest 中，尝试存入 ConsumeQueueExt 文件中（如果开关开启）。
+        request.setBitMap(filterBitMap.bytes());
+
+        long elapsedTime = UtilAll.computeElapsedTimeMilliseconds(startTime);
+        // 1ms
+        if (elapsedTime >= 1) {
+            log.warn("Spend {} ms to calc bit map, consumerNum={}, topic={}", elapsedTime, filterDatas.size(), request.getTopic());
+        }
+    } catch (Throwable e) {
+        log.error("Calc bit map error! topic={}, offset={}, queueId={}, {}", request.getTopic(), request.getCommitLogOffset(), request.getQueueId(), e);
+    }
+}
+```
+
+#### 4.2.3 消息拉取时过滤
+
+一层过滤
+
+```java
+// ExpressionMessageFilter.java
+/**
+ * 根据 ConsumeQueue 中的属性哈希码进行过滤
+ *
+ * @param tagsCode tagsCode
+ * @param cqExtUnit extend unit of consume queue
+ * @return
+ */
+@Override
+public boolean isMatchedByConsumeQueue(Long tagsCode, ConsumeQueueExt.CqExtUnit cqExtUnit) {
+    if (null == subscriptionData) {
+        return true;
+    }
+
+    // 如果是类过滤模式，直接返回 true
+    if (subscriptionData.isClassFilterMode()) {
+        return true;
+    }
+
+    // Tag 过滤
+    // by tags code.
+    if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
+		// ...
+    } else {
+        // SQL92 表达式过滤
+        // no expression or no bloom
+        if (consumerFilterData == null || consumerFilterData.getExpression() == null
+            || consumerFilterData.getCompiledExpression() == null || consumerFilterData.getBloomFilterData() == null) {
+            return true;
+        }
+
+        // message is before consumer
+        if (cqExtUnit == null || !consumerFilterData.isMsgInLive(cqExtUnit.getMsgStoreTime())) {
+            log.debug("Pull matched because not in live: {}, {}", consumerFilterData, cqExtUnit);
+            return true;
+        }
+
+        // 从 ConsumeQueueExt 中取出消息 Reput 时计算的 BitMap，它表示通过过滤条件的所有 SQL92 消费者名称。
+        byte[] filterBitMap = cqExtUnit.getFilterBitMap();
+        BloomFilter bloomFilter = this.consumerFilterManager.getBloomFilter();
+        if (filterBitMap == null || !this.bloomDataValid
+            || filterBitMap.length * Byte.SIZE != consumerFilterData.getBloomFilterData().getBitNum()) {
+            return true;
+        }
+
+        BitsArray bitsArray = null;
+        try {
+            // 判断当前消费者是否需要消费该消息（是否通过过滤），如果返回 true，表示可能需要消费该消息，false 则一定不需要消费
+            bitsArray = BitsArray.create(filterBitMap);
+            boolean ret = bloomFilter.isHit(consumerFilterData.getBloomFilterData(), bitsArray);
+            log.debug("Pull {} by bit map:{}, {}, {}", ret, consumerFilterData, bitsArray, cqExtUnit);
+            return ret;
+        } catch (Throwable e) {
+            log.error("bloom filter error, sub=" + subscriptionData
+                + ", filter=" + consumerFilterData + ", bitMap=" + bitsArray, e);
+        }
+    }
+
+    return true;
+}
+```
+
+二层过滤
+
+```java
+    /**
+     * 根据 CommitLog 中保存的消息内容进行过滤，主要为 SQL92 表达式模式过滤服务
+     *
+     * @param msgBuffer message buffer in commit log, may be null if not invoked in store.
+     * @param properties message properties, should decode from buffer if null by yourself.
+     * @return
+     */
+    @Override
+    public boolean isMatchedByCommitLog(ByteBuffer msgBuffer, Map<String, String> properties) {
+        if (subscriptionData == null) {
+            return true;
+        }
+
+        // 类过滤模式
+        if (subscriptionData.isClassFilterMode()) {
+            return true;
+        }
+
+        // TAG 模式
+        if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
+            return true;
+        }
+
+        ConsumerFilterData realFilterData = this.consumerFilterData;
+        Map<String, String> tempProperties = properties;
+
+        // no expression
+        if (realFilterData == null || realFilterData.getExpression() == null
+            || realFilterData.getCompiledExpression() == null) {
+            return true;
+        }
+
+        // 从消息 Buffer 中解码消息属性
+        if (tempProperties == null && msgBuffer != null) {
+            tempProperties = MessageDecoder.decodeProperties(msgBuffer);
+        }
+
+        Object ret = null;
+        try {
+            MessageEvaluationContext context = new MessageEvaluationContext(tempProperties);
+
+            // 用编译好的 SQL92 表达式去过滤消息属性
+            ret = realFilterData.getCompiledExpression().evaluate(context);
+        } catch (Throwable e) {
+            log.error("Message Filter error, " + realFilterData + ", " + tempProperties, e);
+        }
+
+        log.debug("Pull eval result: {}, {}, {}", ret, realFilterData, tempProperties);
+
+        if (ret == null || !(ret instanceof Boolean)) {
+            return false;
+        }
+
+        return (Boolean) ret;
+    }
+
+```
 
 ## 参考资料
 
