@@ -52,7 +52,7 @@ https://www.liaoxuefeng.com/discuss/1279869501571105/1450880018677794
 
 首先先来根据下面这张图来观察 write 的大致流程
 
-![img](./20230324-rocketmq-netty-write-buffer-watermark.assets/ef1794f3e1664eb4852ea16b27823a34.png)
+![img](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642878.png)
 
 首先，我们对一个 Channel 写入的时候，会先将需要 write 的对象封装为任务放入 Queue
 

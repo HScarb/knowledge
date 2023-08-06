@@ -2,6 +2,7 @@
 venv/
 
 */.temp
+*/.cache
 */node_modules
 */dist/
 /docs/src/.vuepress/dist/

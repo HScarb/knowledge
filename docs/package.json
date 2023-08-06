@@ -1,23 +1,20 @@
 {
   "name": "knowledge",
-  "version": "0.0.1",
-  "description": "消息中间件技术博客",
-  "main": "index.js",
-  "authors": {
-    "name": "Scarb",
-    "email": "jjhfen00@163.com"
-  },
-  "repository": "https://github.com/HScarb/knowledge/knowledge",
-  "scripts": {
-    "dev": "vuepress dev src --temp .temp",
-    "build": "vuepress build src"
-  },
+  "version": "2.0.0",
+  "description": "消息中间件博客",
   "license": "MIT",
-  "devDependencies": {
-    "vuepress": "^1.5.3",
-    "vuepress-theme-reco": "^1.6.13",
-    "vuepress-theme-vdoing": "^1.12.3",
-    "watchpack": "^1.6.1"
+  "type": "module",
+  "scripts": {
+    "docs:build": "vuepress build src",
+    "docs:clean-dev": "vuepress dev src --clean-cache",
+    "docs:dev": "vuepress dev src",
+    "docs:update-package": "pnpm dlx vp-update"
   },
-  "dependencies": {}
+  "devDependencies": {
+    "@vuepress/client": "2.0.0-beta.66",
+    "vue": "^3.3.4",
+    "vuepress": "2.0.0-beta.66",
+    "vuepress-plugin-search-pro": "2.0.0-beta.234",
+    "vuepress-theme-hope": "2.0.0-beta.234"
+  }
 }

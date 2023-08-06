@@ -12,9 +12,6 @@ permissions:
 jobs:
   deploy-gh-pages:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -23,13 +20,10 @@ jobs:
           # 如果你文档需要 Git 子模块，取消注释下一行
           # submodules: true
 
-
       - name: 安装 pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
-          run_install: |
-            - cwd: docs
+          run_install: true
 
 
       - name: 设置 Node.js
@@ -37,7 +31,6 @@ jobs:
         with:
           node-version: 18
           cache: pnpm
-          cache-dependency-path: 'docs/pnpm-lock.yaml'
 
 
       - name: 构建文档
@@ -50,8 +43,6 @@ jobs:
       - name: 部署文档
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          token: ${{ secrets.ACCESS_TOKEN }}
           # 这是文档部署到的分支名称
-          branch: master
-          repository-name: HScarb/hscarb.github.io
+          branch: gh-pages
           folder: docs/src/.vuepress/dist

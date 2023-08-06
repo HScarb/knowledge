@@ -2,8 +2,13 @@
 home: true
 heroImage: https://scarb-images.oss-cn-hangzhou.aliyuncs.com/scarb/scarb.jpg
 tagline: null
-actionText: RocketMQ →
-actionLink: /rocketmq/
+actions:
+- text: RocketMQ →
+  link: ./rocketmq/
+  type: primary
+
+- text: Rabbitmq →
+  link: ./rabbitmq/
 features: 
   - title: 消息中间件
     details: RocketMQ RabbitMQ Kafka Pulser

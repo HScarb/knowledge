@@ -160,11 +160,11 @@ Tag 过滤信息由消费者发送心跳时有 Broker 端心跳处理方法调�
 
 SQL92 过滤信息的注册也是由消费这发送心跳触发，它的存储位置是 `ConsumerFilterManager`，最终的 `ConsumerFilterData` 中包含了编译好的过滤表达式。
 
-![](../assets/rocketmq-filter/rocketmq-filter-data-class-diagram.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642485.png)
 
 ### 3.2 过滤器接口
 
-![image-20230702220114234](../assets/rocketmq-filter/rocketmq-message-filter-class-diagram.png)
+![image-20230702220114234](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642487.png)
 
 Rocketmq 的消息过滤逻辑（表达式过滤、类过滤）都需要实现 `MessageFilter` 接口。它的两个方法先后在从 `MessageStore` 获取消息时调用。通过这两个过滤方法，可以实现二层过滤，先根据较少的信息（消费队列）进行一次粗粒度的过滤，再根据完整的消息信息做精确过滤，这样能够减少精确过滤的次数，提升性能。
 
@@ -183,7 +183,7 @@ SQL92 和 Tag 过滤的逻辑都在 `ExpressionMessageFilter` 中，`ExpressionF
 
 下面是 Tag 过滤的主方法 `isMatchedByConsumeQUeue` 和 `isMatchedByCommitLog`的调用层级（在 `getMessage` 中先后被调用）：
 
-![](../assets/rocketmq-filter/rocketmq-filter-tag-hierarchy.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642488.png)
 
 * `PullMessageProcessor#processRequest`： Broker 端消息拉取请求的入口。先尝试从消息拉取请求中获取过滤信息，如果没有则从服务端 `ConsumerManager` 中获取过滤信息，然后用订阅信息构造一个 `ExpressionMessageFilter`，将其传入 `getMessage` 。
 
@@ -195,7 +195,7 @@ SQL92 和 Tag 过滤的逻辑都在 `ExpressionMessageFilter` 中，`ExpressionF
 
 Rocketmq 的消费队列中专门开辟了 8 个字节的存储位置用于存储消息的 Tag 字符串的 Hash 码，用来为 Tag 过滤进行初筛。之所以不直接存 Tag 字符串，是因为 ConsumeQueue 的存储项是定长结构，加快处理性能。而且 ConsumeQueue 是内存映射文件，每个文件也不宜太大。
 
-![](../assets/rocketmq-consume-queue/rocketmq_consume_queue_item.drawio.svg)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642489.svg)
 
 在消费者上报心跳，注册消费者时就会把过滤信息（Tag 的 Hash 码）生成，放入 `ConsumerManager` 中。
 
@@ -215,7 +215,7 @@ Rocketmq 从 ActiveMQ 中拿到的 `SelectorParser.jj` 语法标准文件，在�
 >
 > 通过执行 `javacc SelectorParser.jj` 命令以后，其会生成如下七个 Java 文件，用以解析 SQL 语法：
 >
-> ![JavaCC 生成的文件](../assets/rocketmq-filter/rocketmq-filter-parser.png)
+> ![JavaCC 生成的文件](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642490.png)
 
 其中 `SelectorParser.java` 是主要的解析器类，会将 SQL92 表达式解析成一个抽象语法树（由 `Expression` 对象组成）。
 
@@ -223,7 +223,7 @@ Rocketmq 从 ActiveMQ 中拿到的 `SelectorParser.jj` 语法标准文件，在�
 
 Rocketmq 实现了一些基本的 `Expression` 用以执行基本的 SQL92 过滤逻辑：
 
-![image-20230703004414898](../assets/rocketmq-filter/rocketmq-filter-expressions.png)
+![image-20230703004414898](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642491.png)
 
 ---
 
@@ -245,7 +245,7 @@ SQL92 的二层过滤中，第一层利用布隆过滤器判断这个消息是�
 
 存入的原理是：对要插入的元素进行 K 次 Hash 运算，将每次运算结果保存到一个二进制数组的一个下标中。
 
-![img](./99991231-rocketmq-filter.assets/1200.png)
+![img](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642492.png)
 
 查询的原理是：对需要查询的数据进行 K 次同样的 Hash 运算，判断运算的结果是否都为 1。
 
@@ -296,7 +296,7 @@ Rocketmq 的布隆过滤器实现与 Guava 的不太一样，它没有把二进�
 
 消息的两层过滤与 Tag 过滤一样，在拉消息方法中被调用。
 
-![](./99991231-rocketmq-filter.assets/rocketmq-filter-tag-hierarchy.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642493.png)
 
 在拉取消息处理方法中，根据拉取消息的消费者信息，从 `ConsumerFilterManager` 中获取过滤数据，生成 `ExpressionMessageFilter` 对象。
 
