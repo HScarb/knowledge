@@ -6,6 +6,7 @@ import theme from "./theme.js";
 
 // @ts-ignore
 export default defineUserConfig({
+  port: 8000,
   base: "/",
 
   lang: "zh-CN",
