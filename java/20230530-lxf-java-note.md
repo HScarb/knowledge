@@ -1,4 +1,4 @@
-# LXF Java note
+# 廖雪峰 Java 教程 笔记
 
 https://www.liaoxuefeng.com/wiki/1252599548343744
 
