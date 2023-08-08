@@ -203,7 +203,7 @@ SQL92 和 Tag 过滤的逻辑都在 `ExpressionMessageFilter` 中，`ExpressionF
 
 Rocketmq 的消费队列中专门开辟了 8 个字节的存储位置用于存储消息的 Tag 字符串的 Hash 码，用来为 Tag 过滤进行初筛。之所以不直接存 Tag 字符串，是因为 ConsumeQueue 的存储项是定长结构，加快处理性能。而且 ConsumeQueue 是内存映射文件，每个文件也不宜太大。
 
-![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202308061642489.svg)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2023/08/1691502737522.png)
 
 在消费者上报心跳，注册消费者时就会把过滤信息（Tag 的 Hash 码）生成，放入 `ConsumerManager` 中。
 
