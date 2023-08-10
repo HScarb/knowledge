@@ -3,6 +3,7 @@ import {searchProPlugin} from "vuepress-plugin-search-pro";
 const {description} = require('../../package')
 import { defineUserConfig } from "vuepress";
 import theme from "./theme.js";
+import {baiduSeoPlugin} from "vuepress-plugin-baidu-seo-next";
 
 // @ts-ignore
 export default defineUserConfig({
@@ -30,5 +31,9 @@ export default defineUserConfig({
       //   },
       // ],
     }),
+    baiduSeoPlugin({
+      hm: '2bde43ef07349311aec5e2fa7104b5ae',
+      ignoreLocal: false
+    })
   ]
 });

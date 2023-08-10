@@ -299,7 +299,7 @@ RIP-43 中还提出了另一种任意时间定时消息的实现方案，即使�
 
 ## 4. 源码解析
 
-## 4.1 定时消息文件
+### 4.1 定时消息文件
 
 #### 4.1.1 `TimerWheel`
 
@@ -374,7 +374,7 @@ public class TimerWheel {
 
 ```java
 public class TimerLog {
-        /**
+    /**
      * 将定时消息索引写入 TimerLog
      *
      * @param data
@@ -433,7 +433,7 @@ public class TimerLog {
 }
 ```
 
-## 4.2 定时消息投递步骤
+### 4.2 定时消息投递步骤
 
 #### 4.2.1 `TimerEnqueueGetService` 保存——扫描定时消息 
 
