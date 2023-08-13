@@ -8,3 +8,5 @@
 
 [Vim 显示、去除换行符](20230316-vim-linebreaker.md)
 
+[廖雪峰 JavaScript 教程 笔记](20230813-lxf-js-note.md)
+

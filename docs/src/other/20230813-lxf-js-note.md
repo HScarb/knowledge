@@ -1,12 +1,14 @@
 ---
-title: lxf-js-note
+title: 廖雪峰 JavaScript 教程 笔记
 author: Scarb
-date: 9999-12-31
+date: 2023-08-13
 ---
 
-原文地址：[http://hscarb.github.io/other/99991231-lxf-js-note.html](http://hscarb.github.io/other/99991231-lxf-js-note.html)
+原文地址：[http://hscarb.github.io/other/20230813-lxf-js-note.html](http://hscarb.github.io/other/20230813-lxf-js-note.html)
 
-# lxf-js-note
+# 廖雪峰 JavaScript 教程 笔记
+
+https://www.liaoxuefeng.com/wiki/1022910821149312
 
 ## 1. 快速入门
 
@@ -875,13 +877,168 @@ class PrimaryStudent extends Student {
 
 ## 5. 浏览器
 
+### 5.5 AJAX
+
+Asynchronous JavaScript and XML，意思就是用JavaScript执行异步网络请求。
+
+让用户留在当前页面中，同时发出新的HTTP请求，就必须用JavaScript发送这个新请求，接收到数据后，再用JavaScript更新页面，这样一来，用户就感觉自己仍然停留在当前页面，但是数据却可以不断地更新。
+
+AJAX请求是异步执行的，也就是说，要通过回调函数获得响应。
+
+#### 5.5.1 XMLHttpRequest 对象
+
+现代浏览器上写AJAX主要依靠`XMLHttpRequest`对象：
+
+```js
+function success(text) {
+    var textarea = document.getElementById('test-response-text');
+    textarea.value = text;
+}
+
+function fail(code) {
+    var textarea = document.getElementById('test-response-text');
+    textarea.value = 'Error code: ' + code;
+}
+
+var request = new XMLHttpRequest(); // 新建XMLHttpRequest对象
+
+request.onreadystatechange = function () { // 状态发生变化时，函数被回调
+    if (request.readyState === 4) { // 成功完成
+        // 判断响应结果:
+        if (request.status === 200) {
+            // 成功，通过responseText拿到响应的文本:
+            return success(request.responseText);
+        } else {
+            // 失败，根据响应码判断失败原因:
+            return fail(request.status);
+        }
+    } else {
+        // HTTP请求还在继续...
+    }
+}
+
+// 发送请求:
+request.open('GET', '/api/categories');
+request.send();
+
+alert('请求已发送，请等待响应...');
+```
+
+#### 5.5.2 Fetch API
+
+浏览器还提供了原生支持的Fetch API，以[Promise](https://www.liaoxuefeng.com/wiki/1022910821149312/1023024413276544)方式提供。配合[async](https://www.liaoxuefeng.com/wiki/1022910821149312/1536754328797217)写法，代码更加简单。
+
+```js
+async function get(url) {
+    let resp = await fetch(url);
+    return resp.json();
+}
+
+// 发送异步请求:
+get('/api/categories').then(data => {
+    let textarea = document.getElementById('fetch-response-text');
+    textarea.value = JSON.stringify(data);
+});
+```
+
+#### 5.5.3 安全限制
+
+默认情况下，JavaScript在发送AJAX请求时，URL的域名必须和当前页面完全一致：域名要相同（`www.example.com`和`example.com`不同），协议要相同（`http`和`https`不同），端口号要相同（默认是`:80`端口，它和`:8080`就不同）。
+
+### 5.6 Promise
+
+JS 中所有代码都是单线程执行的，所有网络操作、浏览器事件都必须异步执行。
+
+“承诺将来会执行”的对象在JavaScript中称为 `Promise` 对象。
+
+```js
+// 两个参数都是函数
+function test(resolve, reject) {
+    var timeOut = Math.random() * 2;
+    log('set timeout to: ' + timeOut + ' seconds.');
+    setTimeout(function () {
+        if (timeOut < 1) {
+            log('call resolve()...');
+            resolve('200 OK');
+        }
+        else {
+            log('call reject()...');
+            reject('timeout in ' + timeOut + ' seconds.');
+        }
+    }, timeOut * 1000);
+}
+
+var p1 = new Promise(test);
+var p2 = p1.then(function (result) {
+    console.log('成功：' + result);
+});
+var p3 = p2.catch(function (reason) {
+    console.log('失败：' + reason);
+});
+
+// 可以串联起来
+new Promise(test).then(function (result) {
+    console.log('成功：' + result);
+}).catch(function (reason) {
+    console.log('失败：' + reason);
+});
+```
+
+#### 5.6.1 并行执行多个任务：`Promise.all`
+
+```js
+var p1 = new Promise(function (resolve, reject) {
+    setTimeout(resolve, 500, 'P1');
+});
+var p2 = new Promise(function (resolve, reject) {
+    setTimeout(resolve, 600, 'P2');
+});
+// 同时执行p1和p2，并在它们都完成后执行then:
+Promise.all([p1, p2]).then(function (results) {
+    console.log(results); // 获得一个Array: ['P1', 'P2']
+});
+```
+
+#### 5.6.2 并行执行并只获得先返回的结果：`Promise.race`
+
+```js
+var p1 = new Promise(function (resolve, reject) {
+    setTimeout(resolve, 500, 'P1');
+});
+var p2 = new Promise(function (resolve, reject) {
+    setTimeout(resolve, 600, 'P2');
+});
+Promise.race([p1, p2]).then(function (result) {
+    console.log(result); // 'P1'
+});
+```
+
+### 5.7 async 函数
+
+用关键字`async`配合`await`调用Promise，实现异步操作，但代码却和同步写法类似。
+
+`async function`可以定义一个异步函数，异步函数和Promise可以看作是等价的，在async function内部，用`await`调用另一个异步函数，写起来和同步代码没啥区别，但执行起来是异步的。
+
+```js
+// 定义一个异步函数
+async function get(url) {
+    let resp = await fetch(url);	// 自动实现异步调用
+    return resp.json();
+}
+// 与下面的 Promise 代码等价
+let promise = fetch(url);
+promise.then((resp) => {
+    // 拿到resp
+})
+```
+
 ## 6. 错误处理
 
 高级语言通常都提供了更抽象的错误处理逻辑try ... catch ... finally，JavaScript也不例外。
 
 ### 6.1 错误类型
 
-JavaScript有一个标准的`Error`对象表示错误，还有从`Error`派生的`TypeError`、`ReferenceError`等错误对象。
+JavaScript有一个标准的`Error`对象表示错误，还有从`E rror`派生的`TypeError`、`ReferenceError`等错误对象。
 
 ```js
 try {
@@ -1006,6 +1163,107 @@ module.exports = function () { return 'foo'; };
 最终，我们*强烈建议*使用`module.exports = xxx`的方式来输出模块变量，这样，你只需要记忆一种方法。
 
 ### 9.2 基本模块
+
+### 9.3 Web 开发
+
+#### 9.3.4 WebSocket
+
+WebSocket是HTML5新增的协议，它的目的是在浏览器和服务器之间建立一个不受限的双向通信的通道，比如说，服务器可以在任意时刻发送消息给浏览器。
+
+WebSocket并不是全新的协议，而是利用了HTTP协议来建立连接。WebSocket连接必须由浏览器发起，因为请求协议是一个标准的HTTP请求。
+
+```
+GET ws://localhost:3000/ws/chat HTTP/1.1
+Host: localhost
+Upgrade: websocket
+Connection: Upgrade
+Origin: http://localhost:3000
+Sec-WebSocket-Key: client-random-string
+Sec-WebSocket-Version: 13
+```
+
+该请求和普通的HTTP请求有几点不同：
+
+1. GET请求的地址不是类似`/path/`，而是以`ws://`开头的地址；
+2. 请求头`Upgrade: websocket`和`Connection: Upgrade`表示这个连接将要被转换为WebSocket连接；
+3. `Sec-WebSocket-Key`是用于标识这个连接，并非用于加密数据；
+4. `Sec-WebSocket-Version`指定了WebSocket的协议版本。
+
+随后，服务器如果接受该请求，就会返回如下响应：
+
+```
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: server-random-string
+```
+
+该响应代码`101`表示本次连接的HTTP协议即将被更改，更改后的协议就是`Upgrade: websocket`指定的WebSocket协议。
+
+一个WebSocket连接就建立成功，浏览器和服务器就可以随时主动发送消息给对方。消息有两种，一种是**文本**，一种是**二进制数据**。通常，我们可以发送JSON格式的文本，这样，在浏览器处理起来就十分容易。
+
+为什么WebSocket连接可以实现全双工通信而HTTP连接不行呢？实际上HTTP协议是建立在TCP协议之上的，TCP协议本身就实现了全双工通信，但是**HTTP协议的请求－应答机制限制了全双工通信**。WebSocket连接建立以后，其实只是简单规定了一下：接下来，咱们通信就不使用HTTP协议了，直接互相发数据吧。
+
+安全的WebSocket连接机制和HTTPS类似。首先，浏览器用`wss://xxx`创建WebSocket连接时，会先通过HTTPS创建安全的连接，然后，该HTTPS连接升级为WebSocket连接，底层通信走的仍然是安全的SSL/TLS协议。
+
+##### 使用 ws
+
+```json
+// package.json
+"dependencies": {
+    "ws": "1.1.1"
+}
+```
+
+然后 `npm install`
+
+服务端
+
+```js
+// 导入WebSocket模块:
+const WebSocket = require('ws');
+
+// 引用Server类:
+const WebSocketServer = WebSocket.Server;
+
+// 实例化:
+const wss = new WebSocketServer({
+    port: 3000
+});
+
+// 响应message事件，在收到消息后再返回一个ECHO: xxx的消息给客户端
+wss.on('connection', function (ws) {
+    console.log(`[SERVER] connection()`);
+    ws.on('message', function (message) {
+        console.log(`[SERVER] Received: ${message}`);
+        ws.send(`ECHO: ${message}`, (err) => {
+            if (err) {
+                console.log(`[SERVER] error: ${err}`);
+            }
+        });
+    })
+});
+```
+
+客户端
+
+```js
+let ws = new WebSocket('ws://localhost:3000/test');
+
+// 打开WebSocket连接后立刻发送一条消息:
+ws.on('open', function () {
+    console.log(`[CLIENT] open()`);
+    ws.send('Hello!');
+});
+
+// 响应收到的消息:
+ws.on('message', function (message) {
+    console.log(`[CLIENT] Received: ${message}`);
+}
+```
+
+
+
 
 
 ---
