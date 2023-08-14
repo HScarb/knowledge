@@ -160,7 +160,7 @@ y.toFixed() // 不报错
   let v1:number = f(); // 不报错
   let v2:string = f(); // 不报错
   let v3:boolean = f(); // 不报错
-  ```
+```
 
 ## 4. 类型系统
 
@@ -414,3 +414,69 @@ let b:T = a;
 如果类型`A`的值可以赋值给类型`B`，那么类型`A`就称为类型`B`的子类型（subtype）。在上例中，类型`number`就是类型`number|string`的子类型。
 
 凡是可以使用父类型的地方，都可以使用子类型，但是反过来不行。
+
+## 5. 数组
+
+JavaScript 数组在 TypeScript 里面分成两种类型，分别是数组（array）和元组（tuple）。
+
+### 5.1 简介
+
+TypeScript 的数组所有成员类型必须相同。
+
+```ts
+let arr:number[] = [1, 2, 3];
+let arr:(number|string)[];
+let arr:any[];
+
+// 另一种写法，用 Array 接口
+let arr:Array<number> = [1, 2, 3];
+let arr:Array<number|string>;
+```
+
+### 5.2 数组的类型推断
+
+```ts
+// 推断为 any[]
+const arr = [];
+// 赋值时会自动更新类型推断
+arr.push(123);
+arr // 推断类型为 number[]
+
+arr.push('abc');
+arr // 推断类型为 (string|number)[]
+```
+
+类型推断的自动更新只发生初始值为空数组的情况。如果初始值不是空数组，类型推断就不会更新。
+
+### 5.3 只读数组，const 断言
+
+JavaScript `const`命令声明的数组变量是可以改变成员。TypeScript 允许声明只读数组，方法是在数组类型前面加上`readonly`关键字。
+
+TypeScript 将`readonly number[]`与`number[]`视为两种不一样的类型，后者是前者的子类型。（数组是只读数组的子类型）
+
+```ts
+const arr:readonly number[] = [0, 1];
+
+arr[1] = 2; // 报错
+arr.push(3); // 报错
+delete arr[0]; // 报错
+
+// 另外写法
+const a1:ReadonlyArray<number> = [0, 1];
+const a2:Readonly<number[]> = [0, 1];
+```
+
+### 5.4 多维数组
+
+```ts
+var multi:number[][] = [[1,2,3], [23,24,25]];
+```
+
+## 6. 元组
+
+TypeScript 特有的数据类型，各个成员的类型可以不同的数组。必须声明每个成员的类型。
+
+```ts
+const s:[string, string, boolean] = ['a', 'b', true];
+```
+
