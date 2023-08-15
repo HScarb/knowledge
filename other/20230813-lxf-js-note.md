@@ -1253,6 +1253,3 @@ ws.on('message', function (message) {
     console.log(`[CLIENT] Received: ${message}`);
 }
 ```
-
-
-

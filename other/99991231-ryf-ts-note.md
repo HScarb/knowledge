@@ -474,9 +474,377 @@ var multi:number[][] = [[1,2,3], [23,24,25]];
 
 ## 6. 元组
 
+### 6.1 简介
+
 TypeScript 特有的数据类型，各个成员的类型可以不同的数组。必须声明每个成员的类型。
 
 ```ts
+// 数组的成员类型写在方括号外面（number[]），元组的成员类型是写在方括号里面（[number]）
 const s:[string, string, boolean] = ['a', 'b', true];
+// 问号后缀表示该成员是可选的，可选成员必须在必选成员之后
+let a:[number, number?] = [1];
+// 扩展运算符 ... 表示不限成员数量的元组，它可以用在任意位置
+type NamedNums = [
+  string,
+  ...number[]
+];
+const a:NamedNums = ['A', 1, 2];
+// 不确定元组成员类型和数量，可以放置任意数量和类型的成员
+type Tuple = [...any[]];
+// 方括号读取成员类型
+type Tuple = [string, number];
+type Age = Tuple[1]; // number
+```
+
+### 6.2 只读元组
+
+```ts
+type t = readonly [number, string]
+type t = Readonly<[number, string]>		// 泛型写法Readonly<T>
+```
+
+### 6.4 扩展运算符
+
+扩展运算符（`...`）将**数组**（注意，不是元组）转换成一个逗号分隔的序列，这时 TypeScript 会认为这个序列的成员数量是不确定的，因为数组的成员数量是不确定的。
+
+```ts
+const arr = [1, 2, 3];
+console.log(...arr)
+```
+
+元组使用扩展运算符，成员数量是确定的。
+
+## 7. symbol 类型
+
+### 7.1 简介
+
+Symbol 是 ES2015 新引入的一种原始类型的值。它类似于字符串，但是每一个 Symbol 值都是**独一无二**的，与其他任何值都不相等。
+
+```ts
+let x:symbol = Symbol();
+let y:symbol = Symbol();
+
+x === y // false
+```
+
+## 8. 函数
+
+### 8.1 简介
+
+需要在声明函数时，给出参数的类型和返回值的类型。缺乏足够信息，就会推断该参数的类型为`any`。
+
+```ts
+// 写法一
+const hello = function (txt:string) {
+  console.log('hello ' + txt);
+}
+
+// 写法二
+const hello: (txt:string) => void = function (txt) {
+  console.log('hello ' + txt);
+};
+
+// 用type命令为函数类型定义一个别名，便于指定给其他变量。
+type MyFunc = (txt:string) => void;
+
+const hello:MyFunc = function (txt) {
+  console.log('hello ' + txt);
+};
+```
+
+TypeScript 允许省略参数。
+
+### 8.2 Function 类型
+
+Function 类型表示函数
+
+### 8.3 箭头函数
+
+普通函数的一种简化写法。
+
+```ts
+const repeat = (str:string, times:number):string => str.repeat(times);
+
+function greet(fn:(a:string) => void):void {
+  fn('world');
+}
+```
+
+### 8.4 可选参数
+
+```ts
+function f(x?:number) {
+  // ...
+}
+
+f(); // OK
+f(10); // OK
+```
+
+### 8.5 参数默认值
+
+```ts
+function createPoint(x:number = 0, y:number = 0):[number, number] {
+  return [x, y];
+}
+
+createPoint() // [0, 0]
+```
+
+### 8.6 参数解构
+
+可以用类型别名
+
+```ts
+type ABC = { a:number; b:number; c:number };
+
+function sum({ a, b, c }:ABC) {
+  console.log(a + b + c);
+}
+```
+
+### 8.7 rest 参数
+
+表示函数剩余的所有参数，可以试数组，也可以是元组。
+
+```ts
+// rest 参数为数组
+function joinNumbers(...nums:number[]) {
+  // ...
+}
+
+// rest 参数为元组
+function f(...args:[boolean, number]) {
+  // ...
+}
+```
+
+### 8.8 readonly 只读参数
+
+```ts
+function arraySum(arr:readonly number[]) {
+  // ...
+  arr[0] = 0; // 报错
+}
+```
+
+### 8.9 void 类型
+
+表示函数没有返回值
+
+```ts
+function f():void {
+  console.log('hello');
+}
+```
+
+### 8.10 never 类型
+
+`never`类型表示肯定不会出现的值。它用在函数的返回值，就表示某个函数肯定不会返回值，即函数不会正常执行结束。
+
+#### 抛出错误的函数
+
+```ts
+function fail(msg:string):never {
+  throw new Error(msg);
+}
+```
+
+#### 无限执行的函数
+
+```ts
+const sing = function():never {
+  while (true) {
+    console.log('sing');
+  }
+};
+```
+
+### 8.11 局部类型
+
+声明其他类型，只在函数内部有效
+
+```ts
+function hello(txt:string) {
+  type message = string;
+  let newTxt:message = 'hello ' + txt;
+  return newTxt;
+}
+
+const newTxt:message = hello('world'); // 报错
+```
+
+### 8.12 高阶函数
+
+函数的返回值还是一个函数，那么前一个函数就称为高阶函数（higher-order function）。
+
+```ts
+(someValue: number) => (multiplier: number) => someValue * multiplier;
+```
+
+### 8.13 函数重载
+
+接受不同类型或不同个数的参数，并且根据参数的不同，会有不同的函数行为。
+
+TypeScript 对于“函数重载”的类型声明方法是，逐一定义每一种情况的类型。
+
+```ts
+// 声明
+function reverse(str:string):string;
+function reverse(arr:any[]):any[];
+// 完整类型声明，兼容前面的重载
+function reverse(
+  stringOrArray:string|any[]
+):string|any[] {
+  if (typeof stringOrArray === 'string')
+    return stringOrArray.split('').reverse().join('');
+  else
+    return stringOrArray.slice().reverse();
+}
+```
+
+### 8.14 构造函数
+
+使用`new`命令调用。构造函数的类型写法，就是在参数列表前面加上`new`命令。
+
+```ts
+class Animal {
+  numLegs:number = 4;
+}
+// 构造函数
+type AnimalConstructor = new () => Animal;
+// 传入一个构造函数
+function create(c:AnimalConstructor):Animal {
+  return new c();
+}
+
+const a = create(Animal);
+```
+
+## 9. 对象
+
+### 9.1 简介
+
+```ts
+const obj:{
+  x:number;		// 可以以分号结尾
+  y:number;
+  add(x:number, y:number): number;
+} = { x: 1, y: 1 };
+
+// 属性类型以逗号结尾
+type MyObj = {
+  x:number,
+  y:number,
+};
+```
+
+### 9.2 可选属性
+
+在属性名后面加一个问号。
+
+```ts
+const obj: {
+  x: number;
+  y?: number;
+} = { x: 1 };
+
+// 可选属性读取之前，需要判断是否为undefined才能使用
+// 写法一
+let firstName = (user.firstName === undefined) ? 'Foo' : user.firstName;
+let lastName = (user.lastName === undefined) ? 'Bar' : user.lastName;
+
+// 写法二，使用Null判断运算符??
+let firstName = user.firstName ?? 'Foo';
+let lastName = user.lastName ?? 'Bar';
+```
+
+### 9.3 只读属性
+
+```ts
+const person:{
+  readonly age: number
+} = { age: 20 };
+
+person.age = 21; // 报错
+
+// 只能在对象初始化时赋值
+type Point = {
+  readonly x: number;
+  readonly y: number;
+};
+
+const p:Point = { x: 0, y: 0 };
+
+p.x = 100; // 报错
+```
+
+### 9.4 属性名的索引类型
+
+```ts
+type MyObj = {
+  [property: string]: string	// 不管这个对象有多少属性，只要属性名为字符串，且属性值也是字符串，就符合这个类型声明。
+};
+
+const obj:MyObj = {
+  foo: 'a',
+  bar: 'b',
+  baz: 'c',
+};
+```
+
+### 9.5 解构赋值
+
+用于直接从对象中提取属性
+
+```ts
+const {id, name, price} = product;
+// 另一种写法：类型写法
+const {id, name, price}:{
+  id: string;
+  name: string;
+  price: number
+} = product;
+```
+
+### 9.7 严格字面量检查
+
+```ts
+const point:{
+  x:number;
+  y:number;
+} = {
+  x: 1,
+  y: 1,
+  z: 1 // 报错
+};
+
+const myPoint = {
+  x: 1,
+  y: 1,
+  z: 1
+};
+
+const point:{
+  x:number;
+  y:number;
+} = myPoint; // 正确，等号右边是变量，不触发严格字面量检查
+```
+
+### 9.9 空对象
+
+这种写法其实在 JavaScript 很常见：先声明一个空对象，然后向空对象添加属性。但是，TypeScript 不允许动态添加属性，所以对象不能分步生成，必须生成时一次性声明所有属性。
+
+```ts
+// 错误
+const pt = {};
+pt.x = 3;
+pt.y = 4;
+
+// 正确
+const pt = {
+  x: 3,
+  y: 4
+};
 ```
 
