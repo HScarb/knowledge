@@ -721,6 +721,671 @@ function create(c:AnimalConstructor):Animal {
 const a = create(Animal);
 ```
 
+## 9. 对象
+
+### 9.1 简介
+
+```ts
+const obj:{
+  x:number;		// 可以以分号结尾
+  y:number;
+  add(x:number, y:number): number;
+} = { x: 1, y: 1 };
+
+// 属性类型以逗号结尾
+type MyObj = {
+  x:number,
+  y:number,
+};
+```
+
+### 9.2 可选属性
+
+在属性名后面加一个问号。
+
+```ts
+const obj: {
+  x: number;
+  y?: number;
+} = { x: 1 };
+
+// 可选属性读取之前，需要判断是否为undefined才能使用
+// 写法一
+let firstName = (user.firstName === undefined) ? 'Foo' : user.firstName;
+let lastName = (user.lastName === undefined) ? 'Bar' : user.lastName;
+
+// 写法二，使用Null判断运算符??
+let firstName = user.firstName ?? 'Foo';
+let lastName = user.lastName ?? 'Bar';
+```
+
+### 9.3 只读属性
+
+```ts
+const person:{
+  readonly age: number
+} = { age: 20 };
+
+person.age = 21; // 报错
+
+// 只能在对象初始化时赋值
+type Point = {
+  readonly x: number;
+  readonly y: number;
+};
+
+const p:Point = { x: 0, y: 0 };
+
+p.x = 100; // 报错
+```
+
+### 9.4 属性名的索引类型
+
+```ts
+type MyObj = {
+  [property: string]: string	// 不管这个对象有多少属性，只要属性名为字符串，且属性值也是字符串，就符合这个类型声明。
+};
+
+const obj:MyObj = {
+  foo: 'a',
+  bar: 'b',
+  baz: 'c',
+};
+```
+
+### 9.5 解构赋值
+
+用于直接从对象中提取属性
+
+```ts
+const {id, name, price} = product;
+// 另一种写法：类型写法
+const {id, name, price}:{
+  id: string;
+  name: string;
+  price: number
+} = product;
+```
+
+### 9.7 严格字面量检查
+
+```ts
+const point:{
+  x:number;
+  y:number;
+} = {
+  x: 1,
+  y: 1,
+  z: 1 // 报错
+};
+
+const myPoint = {
+  x: 1,
+  y: 1,
+  z: 1
+};
+
+const point:{
+  x:number;
+  y:number;
+} = myPoint; // 正确，等号右边是变量，不触发严格字面量检查
+```
+
+### 9.9 空对象
+
+这种写法其实在 JavaScript 很常见：先声明一个空对象，然后向空对象添加属性。但是，TypeScript 不允许动态添加属性，所以对象不能分步生成，必须生成时一次性声明所有属性。
+
+```ts
+// 错误
+const pt = {};
+pt.x = 3;
+pt.y = 4;
+
+// 正确
+const pt = {
+  x: 3,
+  y: 4
+};
+```
+
+## 10. interface
+
+### 10.1 简介
+
+对象的模板，使用了某个模板的对象，就拥有了指定的类型结构。
+
+它的成员有5种形式。
+
+- 对象属性
+- 对象的属性索引
+- 对象方法
+- 函数
+- 构造函数
+
+```ts
+interface Point {
+  x: number;
+  y: number;
+  s?: string;
+  readonly a: string;
+  // 属性索引
+  [prop: string]: number;
+  // 对象方法
+  f(x: boolean): string;
+  f: (x: boolean) => string;
+  f: { (x: boolean): string };
+  // 函数
+  (x:number, y:number): number;
+  // 构造函数
+  new (message?: string): Error;
+}
+```
+
+interface 里面的函数重载，不需要给出实现。但是，由于对象内部定义方法时，无法使用函数重载的语法，所以**需要额外在对象外部给出函数方法的实现**。
+
+```ts
+interface A {
+  f(): number;
+  f(x: boolean): boolean;
+  f(x: string, y: string): string;
+}
+// 额外在对象外部给出函数方法的实现
+function MyFunc(): number;
+function MyFunc(x: boolean): boolean;
+function MyFunc(x: string, y: string): string;
+function MyFunc(
+  x?:boolean|string, y?:string
+):number|boolean|string {
+  if (x === undefined && y === undefined) return 1;
+  if (typeof x === 'boolean' && y === undefined) return true;
+  if (typeof x === 'string' && typeof y === 'string') return 'hello';
+  throw new Error('wrong parameters');  
+}
+
+const a:A = {
+  f: MyFunc
+}
+```
+
+### 10.2 interface 的继承
+
+#### 10.2.1 interface 继承 interface
+
+```ts
+interface Shape {
+  name: string;
+}
+
+interface Circle extends Shape {
+  radius: number;
+}
+```
+
+允许继承多个，子接口与父接口的同名属性必须是类型兼容的，不能有冲突，否则会报错。
+
+#### 10.2.2 interface 继承 type
+
+```ts
+type Country = {
+  name: string;
+  capital: string;
+}
+
+interface CountryWithPop extends Country {
+  population: number;
+}
+```
+
+#### 10.2.3 interface 继承 class
+
+```ts
+class A {
+  x:string = '';
+
+  y():boolean {
+    return true;
+  }
+}
+
+interface B extends A {
+  z: number
+}
+```
+
+### 10.3 接口合并
+
+多个同名接口会合并成一个接口。
+
+```ts
+interface Box {
+  height: number;
+  width: number;
+}
+
+interface Box {
+  length: number;
+}
+```
+
+函数重载。而且，后面的定义比前面的定义具有更高的优先级。但字面量类型有更高的优先级。
+
+```ts
+interface Cloner {
+  clone(animal: Animal): Animal;
+}
+
+interface Cloner {
+  clone(animal: Sheep): Sheep;
+}
+
+interface Cloner {
+  clone(animal: Dog): Dog;
+  clone(animal: Cat): Cat;
+}
+
+// 等同于
+interface Cloner {
+  clone(animal: Dog): Dog;
+  clone(animal: Cat): Cat;
+  clone(animal: Sheep): Sheep;
+  clone(animal: Animal): Animal;
+}
+```
+
+### 10.4 interface 与 type 的异同
+
+几乎所有的 interface 命令都可以改写为 type 命令，他们可以定义一个类型，`class`命令也有类似作用，通过定义一个类，同时定义一个对象类型。但是，它会创造一个值，编译后依然存在。如果只是单纯想要一个类型，应该使用`type`或`interface`。
+
+```ts
+type Country = {
+  name: string;
+  capital: string;
+}
+
+interface Coutry {
+  name: string;
+  capital: string;
+}
+```
+
+区别
+
+1. `type`能够表示非对象类型，而`interface`只能表示对象类型（包括数组、函数等）。
+
+2. `interface`可以继承其他类型，`type`不支持继承。
+3. 同名`interface`会自动合并，同名`type`则会报错。也就是说，TypeScript 不允许使用`type`多次定义同一个类型。
+4. `interface`不能包含属性映射（mapping），`type`可以。
+5. `this`关键字只能用于`interface`。
+6. type 可以扩展原始数据类型，interface 不行。
+7. `interface`无法表达某些复杂类型（比如交叉类型和联合类型），但是`type`可以。
+
+综上所述，如果有**复杂的类型运算**，那么没有其他选择只能使用`type`；一般情况下，`interface`灵活性比较高，便于扩充类型或自动合并，建议优先使用。
+
+## 11. 类
+
+### 11.1 简介
+
+```ts
+class Point {
+  x:number;
+  y:number;
+
+  // 函数重载
+  constructor(x:number, y:string);
+  constructor(s:string);
+  constructor(xs:number|string, y?:string) {
+    // ...
+  }
+
+  add(point:Point) {
+    return new Point(
+      this.x + point.x,
+      this.y + point.y
+    );
+  }
+}
+```
+
+#### 11.1.4 存取器方法
+
+存取器（accessor）是特殊的类方法，包括取值器（getter）和存值器（setter）两种方法。
+
+它们用于读写某个属性，取值器用来读取属性，存值器用来写入属性。
+
+```ts
+class C {
+  _name = '';
+  get name() {
+    return this._name;
+  }
+  set name(value) {
+    this._name = value;
+  }
+}
+```
+
+#### 11.1.5 属性索引
+
+```ts
+class MyClass {
+  [s:string]: boolean |
+    ((s:string) => boolean);
+
+  get(s:string) {
+    return this[s] as boolean;
+  }
+}
+```
+
+`[s:string]`表示**所有属性名类型为字符串的属性**，它们的**属性值要么是布尔值，要么是返回布尔值的函数**。
+
+### 11.2 类的 interface 接口
+
+#### 11.2.1 implements 关键字
+
+interface 接口或 type 别名，可以用对象的形式，为 class 指定一组检查条件。然后，类使用 implements 关键字，表示当前类满足这些外部类型条件的限制。
+
+interface 只是指定检查条件，如果不满足这些条件就会报错。它并不能代替 class 自身的类型声明。
+
+```ts
+interface Country {
+  name:string;
+  capital:string;
+}
+// 或者
+type Country = {
+  name:string;
+  capital:string;
+}
+
+class MyCountry implements Country {
+  name = '';
+  capital = '';
+}
+```
+
+#### 11.2.2 实现多个接口
+
+```ts
+class Car implements MotorVehicle {
+}
+
+class SecretCar extends Car implements Flyable, Swimmable {
+}
+```
+
+### 11.3 Class 类型
+
+#### 11.3.1 实例类型
+
+```ts
+interface MotorVehicle {
+}
+
+class Car implements MotorVehicle {
+}
+
+// 写法一
+const c1:Car = new Car();
+// 写法二
+const c2:MotorVehicle = new Car();
+```
+
+变量的类型可以写成类`Car`，也可以写成接口`MotorVehicle`。它们的区别是，如果类`Car`有接口`MotoVehicle`没有的属性和方法，那么只有变量`c1`可以调用这些属性和方法。
+
+#### 11.3.2 类的自身类型
+
+用 typeof 运算符可以获得类的自身类型。
+
+### 11.5 可访问性修饰符
+
+类的内部成员的外部可访问性，由三个可访问性修饰符（access modifiers）控制：`public`、`private`和`protected`。
+
+这三个修饰符的位置，都写在属性或方法的最前面。
+
+`public`修饰符是默认修饰符，如果省略不写，实际上就带有该修饰符。因此，类的属性和方法默认都是外部可访问的。
+
+```ts
+class Greeter {
+  public greet() {
+    console.log("hi!");
+  }
+}
+
+const g = new Greeter();
+g.greet();
+```
+
+#### 11.5.4 实例属性的简写形式
+
+构造方法的参数`x`前面有`public`修饰符，这时 TypeScript 就会自动声明一个公开属性`x`，不必在构造方法里面写任何代码，同时还会设置`x`的值为构造方法的参数值。注意，这里的`public`不能省略。
+
+除了`public`修饰符，构造方法的参数名只要有`private`、`protected`、`readonly`修饰符，都会自动声明对应修饰符的实例属性。
+
+```ts
+class A {
+  constructor(
+    public a: number,
+    protected b: number,
+    private c: number,
+    readonly d: number
+  ) {}
+}
+
+// 编译结果
+class A {
+    a;
+    b;
+    c;
+    d;
+    constructor(a, b, c, d) {
+      this.a = a;
+      this.b = b;
+      this.c = c;
+      this.d = d;
+    }
+}
+```
+
+### 11.6 静态成员
+
+静态成员是只能通过类本身使用的成员，不能通过实例对象使用。类的内部可以使用`static`关键字，定义静态成员。`static`关键字前面可以使用 public、private、protected 修饰符。
+
+```ts
+class MyClass {
+  static x = 0;
+  static printX() {
+    console.log(MyClass.x);
+  }
+}
+
+MyClass.x // 0
+MyClass.printX() // 0
+```
+
+### 11.7 泛型类
+
+```ts
+class Box<Type> {
+  contents: Type;
+
+  constructor(value:Type) {
+    this.contents = value;
+  }
+}
+
+const b:Box<string> = new Box('hello!');
+```
+
+新建实例时，变量的类型声明需要带有类型参数的值，不过本例等号左边的`Box<string>`可以省略不写，因为可以从等号右边推断得到。
+
+### 11.8 抽象类，抽象成员
+
+TypeScript 允许在类的定义前面，加上关键字`abstract`，表示该类不能被实例化，只能当作其他类的模板。这种类就叫做“抽象类”（abstract class）。
+
+```ts
+abstract class A {
+  id = 1;
+}
+
+const a = new A(); // 报错
+
+class B extends A {
+  amount = 100;
+}
+
+const b = new B();
+
+b.id // 1
+b.amount // 100
+```
+
+### 11.9 this 问题
+
+类的方法经常用到`this`关键字，它表示该方法当前所在的对象。有些场合需要给出`this`类型，但是 JavaScript 函数通常不带有`this`参数，这时 TypeScript 允许函数增加一个名为`this`的参数，放在参数列表的第一位，用来描述函数内部的`this`关键字的类型。
+
+```ts
+class A {
+  name = 'A';
+
+  getName() {
+    return this.name;
+  }
+}
+
+const a = new A();
+a.getName() // 'A'
+```
+
+## 13. Enum 类型
+
+### 13.1 简介
+
+```ts
+enum Color {
+  Red,     // 0
+  Green,   // 1
+  Blue     // 2
+}
+
+let c = Color.Green; // 1
+// 等同于
+let c = Color['Green']; // 1
+
+let c:Color = Color.Green; // 正确
+let c:number = Color.Green; // 正确
+
+// 编译后
+let Color = {
+  Red: 0,
+  Green: 1,
+  Blue: 2
+};
+```
+
+Enum 结构`Color`，里面包含三个成员`Red`、`Green`和`Blue`。第一个成员的值默认为整数`0`，第二个为`1`，第三个为`2`，以此类推。
+
+Enum 结构本身也是一种类型。比如，上例的变量`c`等于`1`，它的类型可以是 Color，也可以是`number`。
+
+由于 TypeScript 的定位是 JavaScript 语言的类型增强，所以官方建议谨慎使用 Enum 结构，因为它不仅仅是类型，还会为编译后的代码加入一个对象。
+
+Enum 结构比较适合的场景是，成员的值不重要，名字更重要，从而增加代码的可读性和可维护性。
+
+### 13.2 Enum 成员的值
+
+成员的值可以是任意数值，甚至可以相同，但不能是大整数（Bigint）。不能重新赋值。
+
+如果只设定第一个成员的值，后面成员的值就会从这个值开始递增。
+
+```ts
+enum Color {
+  Red = 7,
+  Green,  // 8
+  Blue   // 9
+}
+
+// 或者
+enum Color {
+  Red, // 0
+  Green = 7,
+  Blue // 8
+}
+```
+
+### 13.3 同名 Enum 的合并
+
+```ts
+enum Foo {
+  A,
+}
+
+enum Foo {
+  B = 1,
+}
+
+enum Foo {
+  C = 2,
+}
+
+// 等同于
+enum Foo {
+  A,
+  B = 1，
+  C = 2
+}
+```
+
+### 13.4 字符串 Enum
+
+字符串枚举的所有成员值，都必须显式设置。如果没有设置，成员值默认为数值，且位置必须在字符串成员之前。
+
+```ts
+enum Direction {
+  Up = 'UP',
+  Down = 'DOWN',
+  Left = 'LEFT',
+  Right = 'RIGHT',
+}
+
+// 可以混合赋值
+enum Enum {
+  One = 'One',
+  Two = 'Two',
+  Three = 3,
+  Four = 4,
+}
+```
+
+### 13.5 keyof 运算符
+
+```ts
+enum MyEnum {
+  A = 'a',
+  B = 'b'
+}
+
+// 'A'|'B'
+type Foo = keyof typeof MyEnum;		// keyof 运算符可以取出 Enum 结构的所有成员名，作为联合类型返回。
+```
+
+### 13.6 反向映射
+
+可以通过成员值获得成员名。
+
+```ts
+enum Weekdays {
+  Monday = 1,
+  Tuesday,
+  Wednesday,
+  Thursday,
+  Friday,
+  Saturday,
+  Sunday
+}
+
+console.log(Weekdays[3]) // Wednesday
+```
+
 
 
 ---

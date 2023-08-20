@@ -10,3 +10,5 @@
 
 [廖雪峰 JavaScript 教程 笔记](20230813-lxf-js-note.md)
 
+[PowerJob 原理详解 & 源码解析](20230820-powerjob.md)
+

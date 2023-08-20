@@ -1263,9 +1263,6 @@ ws.on('message', function (message) {
 ```
 
 
-
-
-
 ---
 
 欢迎关注公众号【消息中间件】（middleware-mq），更新消息中间件的源码解析和最新动态！
