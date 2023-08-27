@@ -1386,3 +1386,265 @@ enum Weekdays {
 console.log(Weekdays[3]) // Wednesday
 ```
 
+## 14. 类型断言
+
+### 14.1 简介
+
+TypeScript 提供了“类型断言”这样一种手段，允许开发者在代码中“断言”某个值的类型，告诉编译器此处的值是什么类型。TypeScript 一旦发现存在类型断言，就不再对该值进行类型推断，而是直接采用断言给出的类型。
+
+允许开发者在某个位置“绕过”编译器的类型推断，让本来通不过类型检查的代码能够通过，避免编译器报错。
+
+类型断言有两种语法。
+
+```ts
+// 语法一：<类型>值
+<Type>value
+
+// 语法二：值 as 类型（推荐）
+value as Type
+
+// 语法一
+let bar:T = <T>foo;
+
+// 语法二
+let bar:T = foo as T;
+```
+
+## 15. 模块
+
+### 15.1 简介
+
+任何包含 import 或 export 语句的文件，就是一个模块（module）。相应地，如果文件不包含 export 语句，就是一个全局的脚本文件。
+
+模块本身是一个作用域，不属于全局作用域。模块内部的变量、函数、类只在内部可见，对于模块外部是不可见的。暴露给外部的接口，必须用 export 命令声明；如果其他文件要使用模块的接口，必须用 import 命令来输入。
+
+在脚本头部添加
+
+```ts
+export {};
+```
+
+可以让当前文件当作模块处理，所有它的代码变成内部代码。
+
+```ts
+// a.ts
+type Bool = true | false;
+
+export { Bool };
+
+// b.ts
+import { Bool } from './a';	// TypeScript 允许加载模块时，省略模块文件的后缀名，它会自动定位，将./a定位到./a.ts
+
+let foo:Bool = true;
+```
+
+### 15.2 import type 语句
+
+import 在一条语句中，可以同时输入类型和正常接口，但不利于区分类型和正常接口，容易造成混淆。为了解决这个问题，TypeScript 引入了两个解决方法。
+
+1. 在 import 语句输入的类型前面加上`type`关键字。
+
+   ```ts
+   import { type A, a } from './a';
+   ```
+
+2. 使用 import type 语句，这个语句只能输入类型，不能输入正常接口。
+
+   ```ts
+   // 正确
+   import type { A } from './a';
+   
+   // 报错
+   import type { a } from './a';
+   ```
+
+### 15.3 importsNotUsedAsValues 编译设置
+
+TypeScript 特有的输入类型（type）的 import 语句，编译成 JavaScript 时怎么处理呢？
+
+TypeScript 提供了`importsNotUsedAsValues`编译设置项，有三个可能的值。
+
+（1）`remove`：这是默认值，自动删除输入类型的 import 语句。
+
+（2）`preserve`：保留输入类型的 import 语句。
+
+（3）`error`：保留输入类型的 import 语句（与`preserve`相同），但是必须写成`import type`的形式，否则报错。
+
+### 15.4 CommonJS 模块
+
+CommonJS 是 Node.js 的专用模块格式，与 ES 模块格式不兼容。
+
+#### 15.4.1 import = 语句
+
+TypeScript 使用`import =`语句输入 CommonJS 模块。
+
+```ts
+import fs = require('fs');
+const code = fs.readFileSync('hello.ts', 'utf8');
+```
+
+TypeScript 还允许使用`import * as [接口名] from "模块文件"`输入 CommonJS 模块。
+
+```ts
+import * as fs from 'fs';
+// 等同于
+import fs = require('fs');
+```
+
+#### 15.4.2 export = 语句
+
+TypeScript 使用`export =`语句，输出 CommonJS 模块的对象，等同于 CommonJS 的`module.exports`对象。
+
+```ts
+let obj = { foo: 123 };
+
+export = obj;
+```
+
+`export =`语句输出的对象，只能使用`import =`语句加载。
+
+### 15.5 模块定位
+
+模块定位（module resolution）指的是确定 import 语句和 export 语句里面的模块文件位置。
+
+模块定位有两种方法，一种称为 Classic 方法，另一种称为 Node 方法。可以使用编译参数`moduleResolution`，指定使用哪一种方法。
+
+没有指定定位方法时，就看原始脚本采用什么模块格式。如果模块格式是 CommonJS（即编译时指定`--module commonjs`），那么模块定位采用 Node 方法，否则采用 Classic 方法（模块格式为 es2015、 esnext、amd, system, umd 等等）。
+
+#### 15.5.1 相对模块，非相对模块
+
+相对模块指的是路径以`/`、`./`、`../`**开头**的模块。下面 import 语句加载的模块，都是相对模块。
+
+- `import Entry from "./components/Entry";`
+- `import { DefaultHeaders } from "../constants/http";`
+- `import "/mod";`
+
+非相对模块指的是**不带有路径信息**的模块。下面 import 语句加载的模块，都是非相对模块。
+
+- `import * as $ from "jquery";`
+- `import { Component } from "@angular/core";`
+
+#### 15.5.2 Classic 方法
+
+以当前脚本的路径作为“基准路径”，计算相对模块的位置。
+
+非相对模块，也是以当前脚本的路径作为起点，一层层查找上级目录。
+
+#### 15.5.3 Node 方法
+
+Node 方法就是模拟 Node.js 的模块加载方法。
+
+相对模块依然是以当前脚本的路径作为“基准路径”。
+
+非相对模块则是以当前脚本的路径作为起点，逐级向上层目录查找是否存在子目录`node_modules`。
+
+#### 15.5.4 路径映射
+
+TypeScript 允许开发者在`tsconfig.json`文件里面，手动指定脚本模块的路径。
+
+1. baseUrl：可以手动指定脚本模块的基准目录。
+
+   ```json
+   {
+     "compilerOptions": {
+       "baseUrl": "."
+     }
+   }
+   ```
+
+2. paths：指定非相对路径的模块与实际脚本的映射。
+
+   ```json
+   {
+     "compilerOptions": {
+       "baseUrl": ".",
+       "paths": {
+         "jquery": ["node_modules/jquery/dist/jquery"]
+       }
+     }
+   }
+   ```
+
+3. rootDirs：指定模块定位时必须查找的其他目录。
+
+   ```json
+   {
+     "compilerOptions": {
+       "rootDirs": ["src/zh", "src/de", "src/#{locale}"]
+     }
+   }
+   ```
+
+#### 15.5.5 tsc 的 `--traceResolution` 参数
+
+tsc 命令有一个`--traceResolution`参数，能够在编译时在命令行显示模块定位的每一步。
+
+#### 15.5.6 tsc 的 `--noResolve` 参数
+
+`--noResolve`参数，表示模块定位时，只考虑在命令行传入的模块。
+
+## 17. 装饰器
+
+### 17.1 简介
+
+装饰器用来在定义时修改类的行为。
+
+1. 前缀是`@`，后面是一个表达式。
+
+2. `@`后面的表达式，必须是一个函数（或者执行后可以得到一个函数）。
+
+3. 这个函数接受所修饰对象的一些相关值作为参数。
+
+4. 这个函数要么不返回值，要么返回一个新对象取代所修饰的目标对象。
+
+```ts
+function simpleDecorator(
+  value:any,
+  context:any
+) {
+  console.log(`hi, this is ${context.kind} ${context.name}`);
+  return value;
+}
+
+@simpleDecorator
+class A {} // "hi, this is class A"
+```
+
+### 17.3 装饰器的结构
+
+```ts
+type Decorator = (
+  value: DecoratedValue,
+  context: {
+    kind: string;
+    name: string | symbol;
+    addInitializer?(initializer: () => void): void;
+    static?: boolean;
+    private?: boolean;
+    access: {
+      get?(): unknown;
+      set?(value: unknown): void;
+    };
+  }
+) => void | ReplacementValue;
+```
+
+上面代码中，`Decorator`是装饰器的类型定义。它是一个函数，使用时会接收到`value`和`context`两个参数。
+
+- `value`：所装饰的对象。
+- `context`：上下文对象，TypeScript 提供一个原生接口`ClassMethodDecoratorContext`，描述这个对象。
+  1. `kind`：字符串，表示所装饰对象的类型，可能取以下的值。
+     - 'class'
+     - 'method'
+     - 'getter'
+     - 'setter'
+     - 'field'
+     - 'accessor'
+  2. `name`：字符串或者 Symbol 值，所装饰对象的名字，比如类名、属性名等。
+  3. `addInitializer()`：函数，用来添加类的初始化逻辑。以前，这些逻辑通常放在构造函数里面，对方法进行初始化，现在改成以函数形式传入`addInitializer()`方法。注意，`addInitializer()`没有返回值。
+  4. `private`：布尔值，表示所装饰的对象是否为类的私有成员。
+  5. `static`：布尔值，表示所装饰的对象是否为类的静态成员。
+  6. `access`：一个对象，包含了某个值的 get 和 set 方法。
+
+### 17.4 类装饰器
+
