@@ -12,3 +12,5 @@
 
 [PowerJob 原理详解 & 源码解析](20230820-powerjob.md)
 
+[一致性哈希 原理和实现](20231015-consistent-hash.md)
+

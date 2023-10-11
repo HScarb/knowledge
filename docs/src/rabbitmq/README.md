@@ -12,3 +12,5 @@
 
 [RabbitMQ 3.8 特性聚焦：仲裁队列（Quorum Queues）](20220714-rabbitmq-quorum-queues-feature-focus.md)
 
+[RabbitMQ 一致性哈希交换器 使用和原理](20231016-rabbitmq-consistent-hash-exchange.md)
+
