@@ -246,11 +246,78 @@ RocketMQ 分级存储把读取策略抽象了出来，供用户自行配置，�
 
 ### 5.1 分级存储接入
 
+#### 5.1.1 BrokerController#initializeMessageStore 初始化分级存储实现
 
+```java
+public boolean initializeMessageStore() {
+    boolean result = true;
+    try {
+        DefaultMessageStore defaultMessageStore;
+        if (this.messageStoreConfig.isEnableRocksDBStore()) {
+            defaultMessageStore = new RocksDBMessageStore(this.messageStoreConfig, this.brokerStatsManager, this.messageArrivingListener, this.brokerConfig, topicConfigManager.getTopicConfigTable());
+        } else {
+            defaultMessageStore = new DefaultMessageStore(this.messageStoreConfig, this.brokerStatsManager, this.messageArrivingListener, this.brokerConfig, topicConfigManager.getTopicConfigTable());
+        }
+
+        // 如果开启主从切换（DLedger 模式），为 DLedgerLeaderElector 选主器添加角色变更监听器
+        if (messageStoreConfig.isEnableDLegerCommitLog()) {
+            DLedgerRoleChangeHandler roleChangeHandler = new DLedgerRoleChangeHandler(this, defaultMessageStore);
+            ((DLedgerCommitLog) defaultMessageStore.getCommitLog()).getdLedgerServer().getDLedgerLeaderElector().addRoleChangeHandler(roleChangeHandler);
+        }
+
+        this.brokerStats = new BrokerStats(defaultMessageStore);
+
+        // Load store plugin
+        MessageStorePluginContext context = new MessageStorePluginContext(
+            messageStoreConfig, brokerStatsManager, messageArrivingListener, brokerConfig, configuration);
+        // 根据配置文件中的 storePlugin 属性，加载对应的消息存储插件。并且传入默认的消息存储实现的引用，以便插件中可以调用默认的消息存储实现。
+        this.messageStore = MessageStoreFactory.build(context, defaultMessageStore);
+        this.messageStore.getDispatcherList().addFirst(new CommitLogDispatcherCalcBitMap(this.brokerConfig, this.consumerFilterManager));
+        if (messageStoreConfig.isTimerWheelEnable()) {
+            // ...
+        }
+    } catch (IOException e) {
+        result = false;
+        LOG.error("BrokerController#initialize: unexpected error occurs", e);
+    }
+    return result;
+}
+```
+
+#### 5.1.2 MessageStoreFactory#build 构造分级存储插件
+
+```java
+/**
+ * 根据 BrokerConfig 配置的 MessageStorePlugin 创建扩展 MessageStore 实现
+ *
+ * @param messageStore 默认 MessageStore，当前有 {@link org.apache.rocketmq.store.DefaultMessageStore} 和 {@link org.apache.rocketmq.store.RocksDBMessageStore} 两个实现
+ */
+public static MessageStore build(MessageStorePluginContext context,
+    MessageStore messageStore) throws IOException {
+    String plugin = context.getBrokerConfig().getMessageStorePlugIn();
+    // 如果指定了扩展 MessageStore 实现，则创建扩展 MessageStore 实现，并将默认 MessageStore 作为参数传入
+    if (plugin != null && plugin.trim().length() != 0) {
+        String[] pluginClasses = plugin.split(",");
+        for (int i = pluginClasses.length - 1; i >= 0; --i) {
+            String pluginClass = pluginClasses[i];
+            try {
+                @SuppressWarnings("unchecked")
+                Class<AbstractPluginMessageStore> clazz = (Class<AbstractPluginMessageStore>) Class.forName(pluginClass);
+                Constructor<AbstractPluginMessageStore> construct = clazz.getConstructor(MessageStorePluginContext.class, MessageStore.class);
+                AbstractPluginMessageStore pluginMessageStore = construct.newInstance(context, messageStore);
+                messageStore = pluginMessageStore;
+            } catch (Throwable e) {
+                throw new RuntimeException("Initialize plugin's class: " + pluginClass + " not found!", e);
+            }
+        }
+    }
+    return messageStore;
+}
+```
 
 ### 5.2 写消息
 
-#### 5.2.1 MessageStoreDispatcherImpl
+#### 5.2.1 MessageStoreDispatcherImpl#doScheduleDispatch 定时上传消息到分级存储
 
 ```java
 /**
@@ -269,9 +336,7 @@ public void run() {
 /**
  * 分发消息，将消息写入到 {@link FlatMessageFile} 文件中
  *
- * @param flatFile
  * @param force true: 等待直到获取锁成功，false: 获取锁失败时直接返回
- * @return
  */
 @Override
 public CompletableFuture<Boolean> doScheduleDispatch(FlatFileInterface flatFile, boolean force) {
@@ -471,13 +536,11 @@ public CompletableFuture<Void> commitAsync(FlatFileInterface flatFile) {
 }
 ```
 
-#### 5.2.2 FileSegment#commitAsync
+#### 5.2.2 FileSegment#commitAsync 异步上传
 
 ```java
 /**
  * 将 {@link #bufferList} 中的数据写入分级存储文件中
- *
- * @return
  */
 @SuppressWarnings("NonAtomicOperationOnVolatileField")
 public CompletableFuture<Boolean> commitAsync() {
@@ -550,8 +613,784 @@ public CompletableFuture<Boolean> commitAsync() {
 }
 ```
 
-
 ### 5.3 读消息
+
+#### 5.3.1 MessageStoreFetcherImpl#getMessageAsync 分级存储消息读取入口
+
+```java
+/**
+ * 从分级存储读消息
+ *
+ * @param group         Consumer group that launches this query.
+ * @param topic         Topic to query.
+ * @param queueId       Queue ID to query.
+ * @param queueOffset        Logical offset to start from.
+ * @param maxCount      Maximum count of messages to query.
+ * @param messageFilter Message filter used to screen desired messages.
+ */
+@Override
+public CompletableFuture<GetMessageResult> getMessageAsync(
+    String group, String topic, int queueId, long queueOffset, int maxCount, final MessageFilter messageFilter) {
+
+    GetMessageResult result = new GetMessageResult();
+    // 根据队列查找分级存储文件
+    FlatMessageFile flatFile = flatFileStore.getFlatFile(new MessageQueue(topic, brokerName, queueId));
+
+    // 分级存储队列文件不存在，返回 NO_MATCHED_LOGIC_QUEUE
+    if (flatFile == null) {
+        result.setNextBeginOffset(queueOffset);
+        result.setStatus(GetMessageStatus.NO_MATCHED_LOGIC_QUEUE);
+        return CompletableFuture.completedFuture(result);
+    }
+
+    // 从分级存储文件获取最小和最大偏移量，其中最大偏移量取的是消费队列的已提交偏移量（正在上传中的不算在内）
+    // Max queue offset means next message put position
+    result.setMinOffset(flatFile.getConsumeQueueMinOffset());
+    result.setMaxOffset(flatFile.getConsumeQueueCommitOffset());
+
+    // 根据 fetch 的 queueOffset 和返回结果的 minOffset、maxOffset 来决定返回的结果
+    // Fill result according file offset.
+    // Offset range  | Result           | Fix to
+    // (-oo, 0]      | no message       | current offset
+    // (0, min)      | too small        | min offset
+    // [min, max)    | correct          |
+    // [max, max]    | overflow one     | max offset
+    // (max, +oo)    | overflow badly   | max offset
+
+    if (result.getMaxOffset() <= 0) {
+        result.setStatus(GetMessageStatus.NO_MESSAGE_IN_QUEUE);
+        result.setNextBeginOffset(queueOffset);
+        return CompletableFuture.completedFuture(result);
+    } else if (queueOffset < result.getMinOffset()) {
+        result.setStatus(GetMessageStatus.OFFSET_TOO_SMALL);
+        result.setNextBeginOffset(result.getMinOffset());
+        return CompletableFuture.completedFuture(result);
+    } else if (queueOffset == result.getMaxOffset()) {
+        result.setStatus(GetMessageStatus.OFFSET_OVERFLOW_ONE);
+        result.setNextBeginOffset(result.getMaxOffset());
+        return CompletableFuture.completedFuture(result);
+    } else if (queueOffset > result.getMaxOffset()) {
+        result.setStatus(GetMessageStatus.OFFSET_OVERFLOW_BADLY);
+        result.setNextBeginOffset(result.getMaxOffset());
+        return CompletableFuture.completedFuture(result);
+    }
+
+    boolean cacheBusy = fetcherCache.estimatedSize() > memoryMaxSize * 0.8;
+    if (storeConfig.isReadAheadCacheEnable() && !cacheBusy) {
+        // 从缓存读消息
+        return getMessageFromCacheAsync(flatFile, group, queueOffset, maxCount)
+            .thenApply(messageResultExt -> messageResultExt.doFilterMessage(messageFilter));
+    } else {
+        // 从分级存储读消息
+        return getMessageFromTieredStoreAsync(flatFile, queueOffset, maxCount)
+            .thenApply(messageResultExt -> messageResultExt.doFilterMessage(messageFilter));
+    }
+}
+```
+
+#### 5.3.2 MessageStoreFetcherImpl#getMessageFromCacheAsync 从缓存中读取消息
+
+```java
+/**
+ * 从分级存储预读缓存读消息
+ */
+public CompletableFuture<GetMessageResultExt> getMessageFromCacheAsync(
+    FlatMessageFile flatFile, String group, long queueOffset, int maxCount) {
+
+    MessageQueue mq = flatFile.getMessageQueue();
+    // 从缓存中读一批消息
+    GetMessageResultExt result = getMessageFromCache(flatFile, queueOffset, maxCount);
+
+    // 读取到消息
+    if (GetMessageStatus.FOUND.equals(result.getStatus())) {
+        log.debug("MessageFetcher cache hit, group={}, topic={}, queueId={}, offset={}, maxCount={}, resultSize={}, lag={}",
+            group, mq.getTopic(), mq.getQueueId(), queueOffset, maxCount,
+            result.getMessageCount(), result.getMaxOffset() - result.getNextBeginOffset());
+        return CompletableFuture.completedFuture(result);
+    }
+
+    // 如果缓存中没有读到，立即从二级存储中拉消息，并放入缓存
+    // If cache miss, pull messages immediately
+    log.debug("MessageFetcher cache miss, group={}, topic={}, queueId={}, offset={}, maxCount={}, lag={}",
+        group, mq.getTopic(), mq.getQueueId(), queueOffset, maxCount, result.getMaxOffset() - result.getNextBeginOffset());
+
+    return fetchMessageThenPutToCache(flatFile, queueOffset, storeConfig.getReadAheadMessageCountThreshold())
+        .thenApply(maxOffset -> getMessageFromCache(flatFile, queueOffset, maxCount));
+}
+
+/**
+ * 从二级存储拉消息，放入缓存
+ */
+protected CompletableFuture<Long> fetchMessageThenPutToCache(
+    FlatMessageFile flatFile, long queueOffset, int batchSize) {
+
+    MessageQueue mq = flatFile.getMessageQueue();
+    // 从二级存储读消息
+    return this.getMessageFromTieredStoreAsync(flatFile, queueOffset, batchSize)
+        .thenApply(result -> {
+            if (result.getStatus() == GetMessageStatus.OFFSET_OVERFLOW_ONE ||
+                result.getStatus() == GetMessageStatus.OFFSET_OVERFLOW_BADLY) {
+                return -1L;
+            }
+            if (result.getStatus() != GetMessageStatus.FOUND) {
+                log.warn("MessageFetcher prefetch message then put to cache failed, result={}, " +
+                        "topic={}, queue={}, queue offset={}, batch size={}",
+                    result.getStatus(), mq.getTopic(), mq.getQueueId(), queueOffset, batchSize);
+                return -1L;
+            }
+            List<Long> offsetList = result.getMessageQueueOffset();
+            List<Long> tagCodeList = result.getTagCodeList();
+            List<SelectMappedBufferResult> msgList = result.getMessageMapedList();
+            // 将读到的消息放入缓存
+            for (int i = 0; i < offsetList.size(); i++) {
+                SelectMappedBufferResult msg = msgList.get(i);
+                SelectBufferResult bufferResult = new SelectBufferResult(
+                    msg.getByteBuffer(), msg.getStartOffset(), msg.getSize(), tagCodeList.get(i));
+                this.putMessageToCache(flatFile, queueOffset + i, bufferResult);
+            }
+            return offsetList.get(offsetList.size() - 1);
+        });
+}
+```
+
+#### 5.3.3 MessageStoreFetcherImpl#getMessageFromTieredStoreAsync 从二级存储中读取消息
+
+```java
+/**
+ * 从二级存储中读取消息
+ */
+public CompletableFuture<GetMessageResultExt> getMessageFromTieredStoreAsync(
+    FlatMessageFile flatFile, long queueOffset, int batchSize) {
+
+    // 从分级存储文件获取最小和最大偏移量，其中最大偏移量取的是消费队列的已提交偏移量（正在上传中的不算在内）
+    GetMessageResultExt result = new GetMessageResultExt();
+    result.setMinOffset(flatFile.getConsumeQueueMinOffset());
+    result.setMaxOffset(flatFile.getConsumeQueueCommitOffset());
+
+    // 根据 fetch 的 queueOffset 和返回结果的 minOffset、maxOffset 来决定返回的结果
+    if (queueOffset < result.getMinOffset()) {
+        result.setStatus(GetMessageStatus.OFFSET_TOO_SMALL);
+        result.setNextBeginOffset(result.getMinOffset());
+        return CompletableFuture.completedFuture(result);
+    } else if (queueOffset == result.getMaxOffset()) {
+        result.setStatus(GetMessageStatus.OFFSET_OVERFLOW_ONE);
+        result.setNextBeginOffset(queueOffset);
+        return CompletableFuture.completedFuture(result);
+    } else if (queueOffset > result.getMaxOffset()) {
+        result.setStatus(GetMessageStatus.OFFSET_OVERFLOW_BADLY);
+        result.setNextBeginOffset(result.getMaxOffset());
+        return CompletableFuture.completedFuture(result);
+    }
+
+    if (queueOffset < result.getMaxOffset()) {
+        batchSize = Math.min(batchSize, (int) Math.min(
+            result.getMaxOffset() - queueOffset, storeConfig.getReadAheadMessageCountThreshold()));
+    }
+
+    // 读取 ConsumeQueue
+    CompletableFuture<ByteBuffer> readConsumeQueueFuture;
+    try {
+        readConsumeQueueFuture = flatFile.getConsumeQueueAsync(queueOffset, batchSize);
+    } catch (TieredStoreException e) {
+        switch (e.getErrorCode()) {
+            case ILLEGAL_PARAM:
+            case ILLEGAL_OFFSET:
+            default:
+                result.setStatus(GetMessageStatus.OFFSET_FOUND_NULL);
+                result.setNextBeginOffset(queueOffset);
+                return CompletableFuture.completedFuture(result);
+        }
+    }
+
+    int finalBatchSize = batchSize;
+    CompletableFuture<ByteBuffer> readCommitLogFuture = readConsumeQueueFuture.thenCompose(cqBuffer -> {
+
+        // 从 ConsumeQueue Buffer 中解析出第一条和最后一条消息的 commitLog offset，并验证是否合法
+        long firstCommitLogOffset = MessageFormatUtil.getCommitLogOffsetFromItem(cqBuffer);
+        cqBuffer.position(cqBuffer.remaining() - MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE);
+        long lastCommitLogOffset = MessageFormatUtil.getCommitLogOffsetFromItem(cqBuffer);
+        if (lastCommitLogOffset < firstCommitLogOffset) {
+            log.error("MessageFetcher#getMessageFromTieredStoreAsync, last offset is smaller than first offset, " +
+                    "topic={} queueId={}, offset={}, firstOffset={}, lastOffset={}",
+                flatFile.getMessageQueue().getTopic(), flatFile.getMessageQueue().getQueueId(), queueOffset,
+                firstCommitLogOffset, lastCommitLogOffset);
+            return CompletableFuture.completedFuture(ByteBuffer.allocate(0));
+        }
+
+        // 获取整体要读的消息长度，如果长度超过阈值，则缩小单次读取长度（从最后一条消息开始往前缩小，直到缩到只有一条消息）
+        // Get at least one message
+        // Reducing the length limit of cq to prevent OOM
+        long length = lastCommitLogOffset - firstCommitLogOffset + MessageFormatUtil.getSizeFromItem(cqBuffer);
+        while (cqBuffer.limit() > MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE &&
+            length > storeConfig.getReadAheadMessageSizeThreshold()) {
+            cqBuffer.limit(cqBuffer.position());
+            cqBuffer.position(cqBuffer.limit() - MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE);
+            length = MessageFormatUtil.getCommitLogOffsetFromItem(cqBuffer)
+                - firstCommitLogOffset + MessageFormatUtil.getSizeFromItem(cqBuffer);
+        }
+        int messageCount = cqBuffer.position() / MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE + 1;
+
+        log.info("MessageFetcher#getMessageFromTieredStoreAsync, " +
+                "topic={}, queueId={}, broker offset={}-{}, offset={}, expect={}, actually={}, lag={}",
+            flatFile.getMessageQueue().getTopic(), flatFile.getMessageQueue().getQueueId(),
+            result.getMinOffset(), result.getMaxOffset(), queueOffset, finalBatchSize,
+            messageCount, result.getMaxOffset() - queueOffset);
+
+        // 从分级存储 CommitLog 中读取消息
+        return flatFile.getCommitLogAsync(firstCommitLogOffset, (int) length);
+    });
+
+    return readConsumeQueueFuture.thenCombine(readCommitLogFuture, (cqBuffer, msgBuffer) -> {
+        // 拆分每条消息的 ByteBuffer
+        List<SelectBufferResult> bufferList = MessageFormatUtil.splitMessageBuffer(cqBuffer, msgBuffer);
+        int requestSize = cqBuffer.remaining() / MessageFormatUtil.CONSUME_QUEUE_UNIT_SIZE;
+
+        // not use buffer list size to calculate next offset to prevent split error
+        if (bufferList.isEmpty()) {
+            // 消息 ByteBuffer 列表为空
+            result.setStatus(GetMessageStatus.NO_MATCHED_MESSAGE);
+            result.setNextBeginOffset(queueOffset + requestSize);
+        } else {
+            // 消息 ByteBuffer 列表不为空
+            result.setStatus(GetMessageStatus.FOUND);
+            result.setNextBeginOffset(queueOffset + requestSize);
+
+            // 将所有消息加入结果
+            for (SelectBufferResult bufferResult : bufferList) {
+                ByteBuffer slice = bufferResult.getByteBuffer().slice();
+                slice.limit(bufferResult.getSize());
+                SelectMappedBufferResult msg = new SelectMappedBufferResult(bufferResult.getStartOffset(),
+                    bufferResult.getByteBuffer(), bufferResult.getSize(), null);
+                result.addMessageExt(msg, MessageFormatUtil.getQueueOffset(slice), bufferResult.getTagCode());
+            }
+        }
+        return result;
+    }).exceptionally(e -> {
+        MessageQueue mq = flatFile.getMessageQueue();
+        log.warn("MessageFetcher#getMessageFromTieredStoreAsync failed, " +
+            "topic={} queueId={}, offset={}, batchSize={}", mq.getTopic(), mq.getQueueId(), queueOffset, finalBatchSize, e);
+        result.setStatus(GetMessageStatus.OFFSET_FOUND_NULL);
+        result.setNextBeginOffset(queueOffset);
+        return result;
+    });
+}
+```
+
+### 5.4 索引文件
+
+#### 5.4.1 IndexStoreService/IndexStoreFile#putKey 写入索引项
+
+```java
+// IndexStoreService.java
+/**
+ * 向最新的索引文件中写入索引项
+ */
+@Override
+public AppendResult putKey(
+    String topic, int topicId, int queueId, Set<String> keySet, long offset, int size, long timestamp) {
+
+    if (StringUtils.isBlank(topic)) {
+        return AppendResult.UNKNOWN_ERROR;
+    }
+
+    if (keySet == null || keySet.isEmpty()) {
+        return AppendResult.SUCCESS;
+    }
+
+    // 向当前写入的索引文件中写入索引项，重试 3 次
+    for (int i = 0; i < 3; i++) {
+        AppendResult result = this.currentWriteFile.putKey(
+            topic, topicId, queueId, keySet, offset, size, timestamp);
+
+        if (AppendResult.SUCCESS.equals(result)) {
+            return AppendResult.SUCCESS;
+        } else if (AppendResult.FILE_FULL.equals(result)) {
+            // 当前索引文件已满，创建新的索引文件
+            // use current time to ensure the order of file
+            this.createNewIndexFile(System.currentTimeMillis());
+        }
+    }
+
+    // 写入失败
+    log.error("IndexStoreService put key three times return error, topic: {}, topicId: {}, " +
+        "queueId: {}, keySize: {}, timestamp: {}", topic, topicId, queueId, keySet.size(), timestamp);
+    return AppendResult.UNKNOWN_ERROR;
+}
+
+// IndexStoreFile.java
+public AppendResult putKey(
+    String topic, int topicId, int queueId, Set<String> keySet, long offset, int size, long timestamp) {
+
+    if (StringUtils.isBlank(topic)) {
+        return AppendResult.UNKNOWN_ERROR;
+    }
+
+    if (keySet == null || keySet.isEmpty()) {
+        return AppendResult.SUCCESS;
+    }
+
+    try {
+        fileReadWriteLock.writeLock().lock();
+
+        // 只有 UNSEALED 状态的索引文件才允许被写入
+        if (!UNSEALED.equals(fileStatus.get())) {
+            return AppendResult.FILE_FULL;
+        }
+
+        // 索引数量超过最大值（默认 2000w），将索引文件状态置为 SEALED 等待压缩，返回文件已满
+        if (this.indexItemCount.get() + keySet.size() >= this.indexItemMaxCount) {
+            this.fileStatus.set(IndexStatusEnum.SEALED);
+            return AppendResult.FILE_FULL;
+        }
+
+        // 遍历每个 Key，插入索引项
+        for (String key : keySet) {
+            int hashCode = this.hashCode(this.buildKey(topic, key));
+            int slotPosition = this.getSlotPosition(hashCode % this.hashSlotMaxCount);
+            int slotOldValue = this.getSlotValue(slotPosition);
+            int timeDiff = (int) ((timestamp - this.beginTimestamp.get()) / 1000L);
+
+            // 构造 IndexItem，写入索引文件
+            IndexItem indexItem = new IndexItem(
+                topicId, queueId, offset, size, hashCode, timeDiff, slotOldValue);
+            int itemIndex = this.indexItemCount.incrementAndGet();
+            this.byteBuffer.position(this.getItemPosition(itemIndex));
+            this.byteBuffer.put(indexItem.getByteBuffer());
+            this.byteBuffer.putInt(slotPosition, itemIndex);
+
+            if (slotOldValue <= INVALID_INDEX) {
+                this.hashSlotCount.incrementAndGet();
+            }
+            // 更新 endTimestamp
+            if (this.endTimestamp.get() < timestamp) {
+                this.endTimestamp.set(timestamp);
+            }
+            // 更新索引文件 Header
+            this.flushNewMetadata(byteBuffer, indexItemMaxCount == this.indexItemCount.get() + 1);
+
+            log.trace("IndexStoreFile put key, timestamp: {}, topic: {}, key: {}, slot: {}, item: {}, previous item: {}, content: {}",
+                this.getTimestamp(), topic, key, hashCode % this.hashSlotMaxCount, itemIndex, slotOldValue, indexItem);
+        }
+        return AppendResult.SUCCESS;
+    } catch (Exception e) {
+        log.error("IndexStoreFile put key error, topic: {}, topicId: {}, queueId: {}, keySet: {}, offset: {}, " +
+            "size: {}, timestamp: {}", topic, topicId, queueId, keySet, offset, size, timestamp, e);
+    } finally {
+        fileReadWriteLock.writeLock().unlock();
+    }
+
+    return AppendResult.UNKNOWN_ERROR;
+}
+```
+
+#### 5.4.2 IndexStoreService/IndexStoreFile#doCompaction 索引文件压缩重排
+
+```java
+// IndexStoreService.java
+/**
+ * 每 10s 进行一次扫描和压缩
+ */
+@Override
+public void run() {
+    while (!this.isStopped()) {
+        // 删除过期索引文件
+        long expireTimestamp = System.currentTimeMillis()
+            - TimeUnit.HOURS.toMillis(storeConfig.getTieredStoreFileReservedTime());
+        this.destroyExpiredFile(expireTimestamp);
+
+        // 按时间顺序找到下一个 SEALED 待压缩文件
+        IndexFile indexFile = this.getNextSealedFile();
+        // 压缩并上传
+        if (indexFile != null) {
+            if (this.doCompactThenUploadFile(indexFile)) {
+                this.setCompactTimestamp(indexFile.getTimestamp());
+                continue;
+            }
+        }
+        this.waitForRunning(TimeUnit.SECONDS.toMillis(10));
+    }
+    log.info(this.getServiceName() + " service shutdown");
+}
+
+/**
+ * 压缩索引文件并上传到二级存储
+ */
+public boolean doCompactThenUploadFile(IndexFile indexFile) {
+    if (IndexFile.IndexStatusEnum.UPLOAD.equals(indexFile.getFileStatus())) {
+        log.error("IndexStoreService file status not correct, so skip, timestamp: {}, status: {}",
+            indexFile.getTimestamp(), indexFile.getFileStatus());
+        indexFile.destroy();
+        return true;
+    }
+
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    // 如果缓冲区的所有内容都已刷盘到二级存储，则可以进行压缩
+    if (flatAppendFile.getCommitOffset() == flatAppendFile.getAppendOffset()) {
+        // 压缩成新索引文件，返回新文件的 ByteBuffer
+        ByteBuffer byteBuffer = indexFile.doCompaction();
+        if (byteBuffer == null) {
+            log.error("IndexStoreService found compaction buffer is null, timestamp: {}", indexFile.getTimestamp());
+            return false;
+        }
+        // 创建新的 FileSegment，即压缩后的索引文件
+        flatAppendFile.rollingNewFile(Math.max(0L, flatAppendFile.getAppendOffset()));
+        flatAppendFile.append(byteBuffer, indexFile.getTimestamp());
+        flatAppendFile.getFileToWrite().setMinTimestamp(indexFile.getTimestamp());
+        flatAppendFile.getFileToWrite().setMaxTimestamp(indexFile.getEndTimestamp());
+    }
+    // 等待压缩后的索引文件刷盘到分级存储
+    boolean result = flatAppendFile.commitAsync().join();
+
+    List<FileSegment> fileSegmentList = flatAppendFile.getFileSegmentList();
+    FileSegment fileSegment = fileSegmentList.get(fileSegmentList.size() - 1);
+    if (!result || fileSegment == null || fileSegment.getMinTimestamp() != indexFile.getTimestamp()) {
+        log.warn("IndexStoreService upload compacted file error, timestamp: {}", indexFile.getTimestamp());
+        return false;
+    } else {
+        log.info("IndexStoreService upload compacted file success, timestamp: {}", indexFile.getTimestamp());
+    }
+
+    // 将上传后的所以你文件封装成 IndexFile，保存到 timeStoreTable 中
+    readWriteLock.writeLock().lock();
+    try {
+        IndexFile storeFile = new IndexStoreFile(storeConfig, fileSegment);
+        timeStoreTable.put(storeFile.getTimestamp(), storeFile);
+        // 删除本地 IndexFile（未压缩的和压缩后的）
+        indexFile.destroy();
+    } catch (Exception e) {
+        log.error("IndexStoreService rolling file error, timestamp: {}, cost: {}ms",
+            indexFile.getTimestamp(), stopwatch.elapsed(TimeUnit.MILLISECONDS), e);
+    } finally {
+        readWriteLock.writeLock().unlock();
+    }
+    return true;
+}
+
+// IndexStoreFile.java
+/**
+ * 压缩索引文件到新文件，设置索引文件状态为 SEALED，返回新文件 ByteBuffer
+ *
+ * @return 压缩后索引文件 ByteBuffer，读模式
+ */
+@Override
+public ByteBuffer doCompaction() {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    ByteBuffer buffer;
+    try {
+        buffer = compactToNewFile();
+        log.debug("IndexStoreFile do compaction, timestamp: {}, file size: {}, cost: {}ms",
+            this.getTimestamp(), buffer.capacity(), stopwatch.elapsed(TimeUnit.MICROSECONDS));
+    } catch (Exception e) {
+        log.error("IndexStoreFile do compaction, timestamp: {}, cost: {}ms",
+            this.getTimestamp(), stopwatch.elapsed(TimeUnit.MICROSECONDS), e);
+        return null;
+    }
+
+    try {
+        // Make sure there is no read request here
+        fileReadWriteLock.writeLock().lock();
+        fileStatus.set(IndexStatusEnum.SEALED);
+    } catch (Exception e) {
+        log.error("IndexStoreFile change file status to sealed error, timestamp={}", this.getTimestamp());
+    } finally {
+        fileReadWriteLock.writeLock().unlock();
+    }
+    return buffer;
+}
+
+/**
+ * 将 UNSEALED 状态的索引文件压缩到新文件
+ * <p>
+ * 压缩文件于压缩前文件相比
+ * <ul>
+ *     <li>header 不变</li>
+ *     <li>hash 槽从 4byte 扩大到 8byte，增加了</li>
+ *     <li>索引项经过排序，去掉了指针，从 32byte 变为 28byte</li>
+ * </ul>
+ *
+ * @return 压缩后的新文件 ByteBuffer，读模式
+ * @throws IOException
+ */
+protected ByteBuffer compactToNewFile() throws IOException {
+
+    byte[] payload = new byte[IndexItem.INDEX_ITEM_SIZE];
+    ByteBuffer payloadBuffer = ByteBuffer.wrap(payload);
+    // 索引项开始写入位置 = header size + hash 槽总 size（hash 槽数 500w * hash 槽 size 8）
+    int writePosition = INDEX_HEADER_SIZE + (hashSlotMaxCount * HASH_SLOT_SIZE);
+    // 文件大小 = 索引项写入位置 + 索引项总 size（索引项数 2000w * 索引项 size 32）
+    int fileMaxLength = writePosition + COMPACT_INDEX_ITEM_SIZE * indexItemCount.get();
+
+    // 创建新的压缩索引文件
+    compactMappedFile = new DefaultMappedFile(this.getCompactedFilePath(), fileMaxLength);
+    // 压缩后的索引文件 ByteBuffer
+    MappedByteBuffer newBuffer = compactMappedFile.getMappedByteBuffer();
+
+    // 遍历所有 hash 槽（500w）
+    for (int i = 0; i < hashSlotMaxCount; i++) {
+        int slotPosition = this.getSlotPosition(i);
+        int slotValue = this.getSlotValue(slotPosition);
+        int writeBeginPosition = writePosition;
+
+        // 遍历 hash 槽中所有的索引项
+        while (slotValue > INVALID_INDEX && writePosition < fileMaxLength) {
+            // 读取压缩前索引项
+            ByteBuffer buffer = this.byteBuffer.duplicate();
+            buffer.position(this.getItemPosition(slotValue));
+            buffer.get(payload);
+            // 读取老索引项的下一个索引项位置
+            int newSlotValue = payloadBuffer.getInt(COMPACT_INDEX_ITEM_SIZE);
+            // 截掉老索引项的下一个索引项位置，新索引项中不需要。这行是多余的，后面没有操作 buffer
+            buffer.limit(COMPACT_INDEX_ITEM_SIZE);
+            // 索引项写入到新索引文件
+            newBuffer.position(writePosition);
+            newBuffer.put(payload, 0, COMPACT_INDEX_ITEM_SIZE);
+            log.trace("IndexStoreFile do compaction, write item, slot: {}, current: {}, next: {}", i, slotValue, newSlotValue);
+            // 指向下一个索引项位置
+            slotValue = newSlotValue;
+            // 写入位置后移
+            writePosition += COMPACT_INDEX_ITEM_SIZE;
+        }
+
+        // 计算所有索引项总长度
+        int length = writePosition - writeBeginPosition;
+        // 向压缩后的文件写入 hash 槽数据
+        // 0~4byte: 这个 hash 槽索引项的起始位置
+        newBuffer.putInt(slotPosition, writeBeginPosition);
+        // 5~8byte: 这个 hash 槽所有索引项的总长度
+        newBuffer.putInt(slotPosition + Integer.BYTES, length);
+
+        if (length > 0) {
+            log.trace("IndexStoreFile do compaction, write slot, slot: {}, begin: {}, length: {}", i, writeBeginPosition, length);
+        }
+    }
+
+    // 更新 header
+    this.flushNewMetadata(newBuffer, true);
+    // 切换成读模式
+    newBuffer.flip();
+    return newBuffer;
+}
+```
+
+#### 5.4.3 IndexStoreService/IndexStoreFile#queryAsync 根据消息 Key 查询索引项
+
+```java
+// IndexStoreService.java
+/**
+ * 异步查询索引项
+ *
+ * @param topic     The topic of the key.
+ * @param key       The key to be queried.
+ * @param maxCount
+ * @param beginTime The start time of the query range.
+ * @param endTime   The end time of the query range.
+ * @return
+ */
+@Override
+public CompletableFuture<List<IndexItem>> queryAsync(
+    String topic, String key, int maxCount, long beginTime, long endTime) {
+
+    CompletableFuture<List<IndexItem>> future = new CompletableFuture<>();
+    try {
+        readWriteLock.readLock().lock();
+        // 获取时间范围内的所有索引文件
+        ConcurrentNavigableMap<Long, IndexFile> pendingMap =
+            this.timeStoreTable.subMap(beginTime, true, endTime, true);
+        List<CompletableFuture<Void>> futureList = new ArrayList<>(pendingMap.size());
+        ConcurrentHashMap<String /* queueId-offset */, IndexItem> result = new ConcurrentHashMap<>();
+
+        // 逆序遍历索引文件，异步查询索引项
+        for (Map.Entry<Long, IndexFile> entry : pendingMap.descendingMap().entrySet()) {
+            CompletableFuture<Void> completableFuture = entry.getValue()
+                .queryAsync(topic, key, maxCount, beginTime, endTime)
+                .thenAccept(itemList -> itemList.forEach(indexItem -> {
+                    if (result.size() < maxCount) {
+                        result.put(String.format(
+                            "%d-%d", indexItem.getQueueId(), indexItem.getOffset()), indexItem);
+                    }
+                }));
+            futureList.add(completableFuture);
+        }
+
+        // 等待所有查询任务完成
+        CompletableFuture.allOf(futureList.toArray(new CompletableFuture[0]))
+            .whenComplete((v, t) -> {
+                // Try to return the query results as much as possible here
+                // rather than directly throwing exceptions
+                if (result.isEmpty() && t != null) {
+                    future.completeExceptionally(t);
+                } else {
+                    List<IndexItem> resultList = new ArrayList<>(result.values());
+                    future.complete(resultList.subList(0, Math.min(resultList.size(), maxCount)));
+                }
+            });
+    } catch (Exception e) {
+        future.completeExceptionally(e);
+    } finally {
+        readWriteLock.readLock().unlock();
+    }
+    return future;
+}
+```
+
+```java
+// IndexStoreFile.java
+public CompletableFuture<List<IndexItem>> queryAsync(
+    String topic, String key, int maxCount, long beginTime, long endTime) {
+
+    switch (this.fileStatus.get()) {
+        case UNSEALED:
+        case SEALED:
+            // 从本地未压缩的索引文件中查询索引项。SEALED 状态的索引文件仍然会保留未压缩前的索引文件。
+            return this.queryAsyncFromUnsealedFile(buildKey(topic, key), maxCount, beginTime, endTime);
+        case UPLOAD:
+            // 从已压缩并上传到二级存储的索引文件中查询索引项
+            return this.queryAsyncFromSegmentFile(buildKey(topic, key), maxCount, beginTime, endTime);
+        case SHUTDOWN:
+        default:
+            return CompletableFuture.completedFuture(new ArrayList<>());
+    }
+}
+
+/**
+ * 从未压缩的索引文件中查询索引项。SEALED 状态的索引文件仍然会保留未压缩前的索引文件，可能已经创建新索引文件并正在压缩
+ */
+protected CompletableFuture<List<IndexItem>> queryAsyncFromUnsealedFile(
+    String key, int maxCount, long beginTime, long endTime) {
+
+    return CompletableFuture.supplyAsync(() -> {
+        List<IndexItem> result = new ArrayList<>();
+        try {
+            fileReadWriteLock.readLock().lock();
+            if (!UNSEALED.equals(this.fileStatus.get()) && !SEALED.equals(this.fileStatus.get())) {
+                return result;
+            }
+
+            if (mappedFile == null || !mappedFile.hold()) {
+                return result;
+            }
+
+            // 根据 key 的 hashCode 计算 hash 槽位置，获取 hash 槽的值。它指向第一个索引项的位置
+            int hashCode = this.hashCode(key);
+            int slotPosition = this.getSlotPosition(hashCode % this.hashSlotMaxCount);
+            int slotValue = this.getSlotValue(slotPosition);
+
+            // 遍历索引项链表，直到找到足够的索引项或者达到最大查询次数（默认 512）
+            int left = MAX_QUERY_COUNT;
+            while (left > 0 &&
+                slotValue > INVALID_INDEX &&
+                slotValue <= this.indexItemCount.get()) {
+
+                byte[] bytes = new byte[IndexItem.INDEX_ITEM_SIZE];
+                ByteBuffer buffer = this.byteBuffer.duplicate();
+                buffer.position(this.getItemPosition(slotValue));
+                buffer.get(bytes);
+                IndexItem indexItem = new IndexItem(bytes);
+                if (hashCode == indexItem.getHashCode()) {
+                    result.add(indexItem);
+                    if (result.size() > maxCount) {
+                        break;
+                    }
+                }
+                slotValue = indexItem.getItemIndex();
+                left--;
+            }
+
+            log.debug("IndexStoreFile query from unsealed mapped file, timestamp: {}, result size: {}, " +
+                    "key: {}, hashCode: {}, maxCount: {}, timestamp={}-{}",
+                getTimestamp(), result.size(), key, hashCode, maxCount, beginTime, endTime);
+        } catch (Exception e) {
+            log.error("IndexStoreFile query from unsealed mapped file error, timestamp: {}, " +
+                "key: {}, maxCount: {}, timestamp={}-{}", getTimestamp(), key, maxCount, beginTime, endTime, e);
+        } finally {
+            fileReadWriteLock.readLock().unlock();
+            mappedFile.release();
+        }
+        return result;
+    }, MessageStoreExecutor.getInstance().bufferFetchExecutor);
+}
+
+/**
+ * 从已压缩并上传到二级存储的索引文件中查询索引项
+ */
+protected CompletableFuture<List<IndexItem>> queryAsyncFromSegmentFile(
+    String key, int maxCount, long beginTime, long endTime) {
+
+    if (this.fileSegment == null || !UPLOAD.equals(this.fileStatus.get())) {
+        return CompletableFuture.completedFuture(Collections.emptyList());
+    }
+
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    // 从二级存储中读取索引文件，根据 key 的 hashCode 计算 hash 槽位置
+    int hashCode = this.hashCode(key);
+    int slotPosition = this.getSlotPosition(hashCode % this.hashSlotMaxCount);
+
+    // 根据 hash 槽位置查询 hash 槽
+    CompletableFuture<List<IndexItem>> future = this.fileSegment.readAsync(slotPosition, HASH_SLOT_SIZE)
+        .thenCompose(slotBuffer -> {
+            if (slotBuffer.remaining() < HASH_SLOT_SIZE) {
+                log.error("IndexStoreFile query from tiered storage return error slot buffer, " +
+                    "key: {}, maxCount: {}, timestamp={}-{}", key, maxCount, beginTime, endTime);
+                return CompletableFuture.completedFuture(null);
+            }
+            // 读取 hash 槽中的索引项起始位置和总长度
+            int indexPosition = slotBuffer.getInt();
+            int indexTotalSize = Math.min(slotBuffer.getInt(), COMPACT_INDEX_ITEM_SIZE * 1024);
+            if (indexPosition <= INVALID_INDEX || indexTotalSize <= 0) {
+                return CompletableFuture.completedFuture(null);
+            }
+            // 根据索引项起始位置和索引项总长度读取索引项
+            return this.fileSegment.readAsync(indexPosition, indexTotalSize);
+        })
+        // 组装读取到的索引项
+        .thenApply(itemBuffer -> {
+            List<IndexItem> result = new ArrayList<>();
+            if (itemBuffer == null) {
+                return result;
+            }
+
+            if (itemBuffer.remaining() % COMPACT_INDEX_ITEM_SIZE != 0) {
+                log.error("IndexStoreFile query from tiered storage return error item buffer, " +
+                    "key: {}, maxCount: {}, timestamp={}-{}", key, maxCount, beginTime, endTime);
+                return result;
+            }
+
+            // 遍历索引项，根据索引项的时间戳范围和 hashCode 过滤索引项，直到找到足够的索引项
+            int size = itemBuffer.remaining() / COMPACT_INDEX_ITEM_SIZE;
+            byte[] bytes = new byte[COMPACT_INDEX_ITEM_SIZE];
+            for (int i = 0; i < size; i++) {
+                itemBuffer.get(bytes);
+                IndexItem indexItem = new IndexItem(bytes);
+                long storeTimestamp = indexItem.getTimeDiff() + beginTimestamp.get();
+                if (hashCode == indexItem.getHashCode() &&
+                    beginTime <= storeTimestamp && storeTimestamp <= endTime &&
+                    result.size() < maxCount) {
+                    result.add(indexItem);
+                }
+            }
+            return result;
+        });
+
+    return future.whenComplete((result, throwable) -> {
+        long costTime = stopwatch.elapsed(TimeUnit.MILLISECONDS);
+        if (throwable != null) {
+            log.error("IndexStoreFile query from segment file, cost: {}ms, timestamp: {}, " +
+                    "key: {}, hashCode: {}, maxCount: {}, timestamp={}-{}",
+                costTime, getTimestamp(), key, hashCode, maxCount, beginTime, endTime, throwable);
+        } else {
+            String details = Optional.ofNullable(result)
+                .map(r -> r.stream()
+                    .map(item -> String.format("%d-%d", item.getQueueId(), item.getOffset()))
+                    .collect(Collectors.joining(", ")))
+                .orElse("");
+
+            log.debug("IndexStoreFile query from segment file, cost: {}ms, timestamp: {}, result size: {}, ({}), " +
+                    "key: {}, hashCode: {}, maxCount: {}, timestamp={}-{}",
+                costTime, getTimestamp(), result != null ? result.size() : 0, details, key, hashCode, maxCount, beginTime, endTime);
+        }
+    });
+}
+```
 
 ## 参考资料
 
