@@ -172,7 +172,9 @@ tieredStorageLevel=FORCE
 
 写消息经过一次重构，由原来的实时上传改为**攒批**，纯**异步**上传。在相同流量下性能提升了 3 倍以上。
 
-写消息逻辑由**消息分发器**处理，它是一个服务线程，每 20s 进行一次扫描，依次扫描所有的队列，决定是否要上传消息。
+写消息逻辑由**分级存储消息分发器**处理，它被注册到默认存储的分发器链中，在其他分发器都分发完毕后被调用，在这里被调用只是为了创建队列的文件容器和持久化队列的元数据。
+
+**分级存储消息分发器**是一个服务线程，每 20s 进行一次扫描，依次扫描所有的队列，决定是否要上传消息。
 
 触发上传的条件有两个：距离上次提交达到一定时间（默认 30s），或者等待上传的消息超过一定数量（默认 4096）。
 
@@ -250,11 +252,71 @@ RocketMQ 分级存储把读取策略抽象了出来，供用户自行配置，�
 
 ## 4. 详细设计
 
-![](../assets/rocketmq-tiered-store/class-relation.drawio.png)
+分级存储的代码位于一个单独的模块 `tieredstore`，由 `TieredMessageStore` 这个类承载。
+
+### 4.1 接入方式
+
+RocketMQ 支持以插件的方式引入自定义的存储实现，分级存储就是通过实现 `AbstractPluginMessageStore` 来作为插件进行接入的。`AbstractPluginMessageStore` 实现了 `MessageStore` 接口，可以作为 Broker 的存储实现。
+
+#### 4.1.1 分级存储初始化
+
+在 BrokerController 初始化时，调用 `initializeMessageStore()` 方法，会先进行默认存储的初始化。
+
+默认存储有两种类型
+
+1. `DefaultMessageStore`，为使用磁盘文件存储的默认存储实现
+2. `RocksDBMessageStore`，使用 RocksDB 进行存储实现，为了支持百万队列而引入
+
+然后如果配置了插件存储，则将实例化插件存储，作为 Broker 中真正使用的存储实现。最后，将默认存储作为一个引用传入插件存储，这样，在插件存储中仍然可以调用默认存储。
+
+#### 4.1.2 分级存储调用
+
+##### 写消息
+
+在存储消息时，`TieredMessageStore` 并没有重写消息存储的方法，而是直接调用了默认存储的消息保存，先将消息存至默认的本地存储中。
+
+分级存储在这里的接入方法是：在默认存储的消息分发器中添加分级存储的消息分发器实例。这样，消息在存储到 `CommitLog` 之后会先分发到 `ConsumeQueue` 和 `IndexFile`，然后分发到分级存储。
+
+##### 读消息
+
+查询时，`TieredMessageStore` 重写了 `getMessageAsync` 方法，根据配置的分级存储消息读取策略进行判断，如果是读本地存储，则使用本地存储的引用调用其 `getMessageAsync` 方法，如果是读分级存储则调用分级存储 `fetcher` 获取消息。
 
 ### 4.1 存储模型
 
+![](../assets/rocketmq-tiered-store/class-relation.drawio.png)
 
+如上图所示，`TieredMessageStore` 中包含了分级存储所有的存储模型，下面来分别介绍
+
+* FlatFileStore：分级存储中消息文件存储的实现，内部有一个 Map 作为分级存储文件容器，Key 是队列，Value 是该队列的分级存储文件，以 `FlatMessageFile` 的形式存储
+
+  * FlatMessageFile：表示单个队列的存储实现，它封装了 `FlatCommitLogFile` 和 `FlatConsumeQueueFile` 对象，并且提供了读/写消息等操作接口。
+
+    * FlatCommitLogFile：分级存储 `CommitLog` 文件，类似本地存储的 `CommitLog`，由一组 `FileSegment` 队列构成。区别是分级存储的 `CommitLog` 是以队列维度保存的。
+
+      这是为了方便连续地读取单个队列中的消息。如果仍然以本地存储的方式将所有队列的 `CommitLog` 统一存储，同一队列的消息数据可能会横跨更多的文件，为分级存储带来更多的 IOPS 压力，这对分级存储来说是非常昂贵的。
+
+    * FlatConsumeQueueFile：分级存储队列消费索引，类似本地存储的 `ConsumeQueue`，由一组 `FileSegment` 队列构成。保存着消息位置（指向 `FlatCommitLogFile` 的偏移量）
+
+      * FlatAppendFile：`FlatCommitLogFile` 和 `FlatConsumeQueueFile` 都扩展了这个类，它类似本地存储的 `MappedFileQueue`，是零个或多个定长 `FileSegment` 组成的链表。其中最多只有最后一个 `FileSegment` 是可写的，前面的文件都是只读的。
+        * FileSegment：类似本地存储的 `MappedFile`，分级存储中的文件最小单元。
+
+* DefaultMetadataStore：分级存储元数据存储实现，用于存储 Topic、Queue、FileSegment 等元数据信息
+
+  * topicMetadataTable：Map，存储分级存储中 Topic 的元数据和额外属性
+  * queueMetadataTable：Map，存储分级存储中 Queue 元数据和额外属性
+  * commitLogFileSegmentTable：分级存储 `CommitLog` 的 `FileSegment` 文件元数据
+  * consumeQueueFileSegment：分级存储 `ConsumeQueue` 的 `FileSegment` 文件元数据
+  * indexFileSegmentTable：分级存储 `IndexFile` 的 `FileSegment` 文件元数据
+
+* MessageStoreFetcher：分级存储消息读取器，负责处理分级存储读取请求。
+
+  * fetcherCache：读取器预读缓存，为了加速从二级存储读取的速度和减少整体上对二级存储请求数而设置。在读取前查询和读取缓存；从二级存储读到数据后放入缓存。
+
+* MessageStoreDispatcher：分级存储消息分发器，是一个服务线程，定时将本地已经攒批的数据上传到分级存储。
+
+* IndexStoreService：分级存储索引服务，内部包含了由 `IndexStoreFile` 构成的索引文件表，以及当前正在写入的索引文件的引用。同时提供了索引文件操作的接口。
+
+  * IndexStoreFile：分级存储索引文件，类似本地存储的 `IndexFile`，底层是分级存储 `FileSegment`。
 
 ## 5. 源码解析
 
