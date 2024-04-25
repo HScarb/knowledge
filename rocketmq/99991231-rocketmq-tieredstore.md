@@ -182,7 +182,7 @@ tieredStorageLevel=FORCE
 
 1. 先将等待上传的这部分消息放入刷盘缓冲区
 2. 为这些消息创建消费队列，也是将消费队列数据放入刷盘缓冲区
-3. 用一个专门的消息上传线程池异步上传已被放入缓冲区的消息。
+3. 判断缓冲区中的消息是否达到阈值（等到到一定时间或者缓冲区中消息到一定数量），如果达到阈值，则用一个专门的消息上传线程池异步上传已被放入缓冲区的消息。
 4. 上传的过程中，先批量上传消息数据，上传成功后再批量上传消费索引数据（最后如果开启索引构建的话，再构建索引）
 
 ### 3.5 读消息
@@ -281,7 +281,7 @@ RocketMQ 支持以插件的方式引入自定义的存储实现，分级存储�
 
 查询时，`TieredMessageStore` 重写了 `getMessageAsync` 方法，根据配置的分级存储消息读取策略进行判断，如果是读本地存储，则使用本地存储的引用调用其 `getMessageAsync` 方法，如果是读分级存储则调用分级存储 `fetcher` 获取消息。
 
-### 4.1 存储模型
+### 4.2 存储模型
 
 ![](../assets/rocketmq-tiered-store/class-relation.drawio.png)
 
@@ -317,6 +317,63 @@ RocketMQ 支持以插件的方式引入自定义的存储实现，分级存储�
 * IndexStoreService：分级存储索引服务，内部包含了由 `IndexStoreFile` 构成的索引文件表，以及当前正在写入的索引文件的引用。同时提供了索引文件操作的接口。
 
   * IndexStoreFile：分级存储索引文件，类似本地存储的 `IndexFile`，底层是分级存储 `FileSegment`。
+
+### 4.3 写消息
+
+初始化分级存储时会将分级存储 dispatcher 注册到 CommitLog 的 dispatcher 链当中。
+
+在消息写入 CommitLog 后，reput 线程会扫描 CommitLog 中的消息，然后依次运行 dispatcher 链中的 dispatcher，生成 ConsumeQueue 和 IndexFile。在这之后，会执行分级存储 dispatcher 方法。分级存储的 dispatcher 仅仅根据扫描到的消息创建分级存储对应的队列目录和空的分级存储 FileSegment 文件，上传数据的流程为定时发起。
+
+![](../assets/rocketmq-tiered-store/write-process.drawio.png)
+
+`MessageStoreDispatcherImpl` 是分级存储消息分发器的实现，用于将本地存储的消息提交到分级存储中。它是一个服务线程，每 20s 运行一次，判断缓冲区中等待上传的消息是否达到阈值，如果达到则将本地存储中的这批消息提交到分级存储。
+
+每 20s，它遍历当前分级存储中所有的 `FlatMessageFile`（也就是遍历每个 Queue），对他们执行 `dispatchWithSemaphore` 方法。
+
+这个方法获取信号量，然后将执行异步上传操作，当前默认允许的同时上传的 Queue 数量为 2500。
+
+`doScheduleDispatch` 方法执行消息数据的获取、缓冲和上传。
+
+每次上传的数据量是有一个阈值的，满足了阈值条件其中之一才进行上传，否则等待下一次扫描。
+
+* 超时：上次提交到当前时间是否超过分级存储存储的提交时间阈值（30s）
+* 缓冲区满：当前队列等待提交的消息数量超过阈值（4096）
+
+该方法的第一步是找到本次上传数据的偏移量起始和结束位置。在这之前需要明确一些概念。
+
+RocketMQ 在多副本的情况下，消息被写入 CommitLog 之后更新 max offset（图中黄色部分），但这些消息还需要同步到其他副本。多副本中多数派的最小位点（低水位）为 commit offset，而在这之间的消息是正在等待副本同步的。允许上传到分级存储的消息（也就是上传数据的结束位置最多）是 commit offset 之前。
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202404260139047.png)
+
+起始位置的计算方式如下：
+
+* 如果这个队列的分级存储 FileSegment 为空（刚初始化），那么起始位置即该 FileSegment 文件对应的队列起始偏移量。
+* 如果这个 FileSegment 已经初始化过，那么为分级存储 ConsumeQueue 当前的 maxOffset。因为分级存储的 CommitLog 和 ConsumeQueue 上传是一系列操作，必须保证消息上传到这两个文件成功才视作上传成功。所以应该以 ConsumeQueue 的 max offset 为准。
+
+明确了起始位置之后，要计算当次上传的结束位置。单次上传最大消息数据量也有一个阈值，默认为 4M，如果队列中等待上传的消息量超过 4M，则截断上传，否则全部上传。
+
+上传到分级存储的操作也分为两步，`append` 和 `commit`。
+
+* append：将数据放入上传缓冲区，等待批量上传。这个过程在这里是同步的。分级存储文件的 max offset 包含了放入缓冲区中等待上传的消息数据。
+* commit：真正将数据上传到二级存储，为异步操作。分级存储文件中的 commit offset 为已经上传到分级存储的消息数据。
+
+整个分发逻辑为：
+
+1. 从起始位置到结束位置遍历队列逻辑偏移量
+2. 根据偏移量获取本地存储中的 ConsumeQueue 单元
+3. 根据 ConsumeQueue 单元查找本地存储 CommitLog，获取消息数据
+4. 将消息数据 append 到分级存储 CommitLog 中的缓存
+5. 提交一个分级存储的 DispatchRequest，append 到分级存储 ConsumeQueue 的缓存
+6. 异步执行 commit，先将 CommitLog 缓存中的数据上传到分级存储，然后将 ConsumeQueue 缓存中的数据上传到二级存储
+7. 如果开启 IndexFile，则调用 `constructIndexFile` 构造分级存储 IndexFile，具体逻辑后面会讲
+
+### 4.4 读消息
+
+### 4.5 索引文件
+
+### 4.6 重启恢复和元数据
+
+
 
 ## 5. 源码解析
 
