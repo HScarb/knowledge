@@ -369,7 +369,93 @@ RocketMQ 在多副本的情况下，消息被写入 CommitLog 之后更新 max o
 
 ### 4.4 读消息
 
+读消息的逻辑引入预读缓存，以加快读取速度、减少对分级存储的访问。读消息的逻辑也经过一次重构，原先的预读缓存使用了拥塞控制算法，每次预读消息量类似拥塞窗口采用加法增、乘法减的流量控制机制，但存在 OOM 的问题。重构后采用更简单明了的预读策略：当缓存中的数据大小大于缓存配置大小的 80% 时就直接走分级存储，解决了 OOM 的问题。
+
+![](../assets/rocketmq-tiered-store/read-process.drawio.png)
+
+#### 4.4.1 TieredMessageStore 读消息
+
+如果使用分级存储，`TieredMessageStore` 则会作为 Broker 使用的 `MessageStore`，读消息时会调用 `getMessageAsync` 方法。它的逻辑是
+
+1. 根据用户配置的分级存储读取策略，检查是否需要从分级存储中读取消息。分级存储读取策略如下，默认为 `NOT_IN_DISK`：
+   * DISABLE：禁用分级存储，所有 fetch 请求都将由本地消息存储处理。
+   * NOT_IN_DISK：只有 offset 不在本地存储中的 fetch 请求才会由分级存储处理。
+   * NOT_IN_MEM：只有 offset 不在内存中的 fetch 请求才会由分级存储处理。
+   * FORCE：所有 fetch 请求都将由分级存储处理。
+2. 如果是从分级存储进行读取，则调用 `MessageStoreFetcherImpl` 的 `getMessageAsync` 方法，从分级存储读取消息数据。如果是从本地存储读取，则调用本地存储 `MessageStore` 的引用，读取本地存储中的消息数据。
+3. 如果从分级存储没有找到消息，会从本地存储再读取一次。如果从分级存储中找到，更新分级存储的统计信息。
+
+#### 4.4.2 预读缓存设计
+
+预读缓存是使用 Caffeine 库来创建的内存缓存。最大可用的内存默认为 JVM 内存的 30%，缓存项在 15s 内没有被使用则清理，使用消息 buffer 大小计算内存使用量。
+
+#### 4.4.3 MessageStoreFetcher 读消息
+
+`MessageStoreFetcherImpl#getMessageAsync` 方法需要判断走预读缓存读消息还是直接走分级存储，根据判断结果来调用读取消息的方法。判断依据是预读缓存占用的内存是否超过阈值（即超过预读缓存最多可用内存的 80%）。
+
+缓存的 Key 是 `topic@queueId@offset` 字符串，Value 是 `SelectBufferResult`
+
+##### 从分级存储读取
+
+先来看**直接走分级存储**读取的场景，会调用 `getMessageFromTieredStoreAsync` 方法，该方法逻辑如下
+
+1. 根据要读取消息的偏移量和最大读取消息数量获取分级存储 ConsumeQueue
+2. 根据 ConsumeQueue 读取分级存储 CommitLog
+   1. 从 ConsumeQueue Buffer 中解析出第一条和最后一条消息的 commitLog offset，并验证是否合法
+   2. 获取整体要读的消息长度，如果长度超过阈值，则缩小单次读取长度（从最后一条消息开始往前缩小，直到缩到只有一条消息）
+   3. 从分级存储 CommitLog 中读取消息
+3. 读取到消息数据后进行处理，将返回结果解析成消息对象，放入返回结果中返回
+
+##### 从预读缓存读取
+
+然后来看走**预读缓存**的场景，如果预读缓存中没有消息，会走到上面分级存储读取的方法来读取消息然后放入预读缓存。
+
+`getMessageFromCacheAsync` 逻辑如下：
+
+1. 先尝试从缓存中读消息，根据消息逻辑偏移量一条一条从缓存中查询消息。
+2. 如果从缓存中读取到消息，即便没有达到 maxCount 也直接返回。
+3. 如果缓存中没有读到，调用 `fetchMessageThenPutToCache`  方法：
+   1. 它先调用 `getMessageFromTieredStoreAsync` 方法从分级存储查询消息
+   2. 然后将读到的消息放入缓存
+4. 最后再查询缓存，将结果返回
+
+#### 4.4.4 FlatAppendFile 读消息
+
+FlatAppendFile 是分级存储 FileSegment 列表的封装，`readAsync` 方法会找到要读取的 FileSegment，然后调用 FileSegment 的 `readAsync` 方法进行读取，逻辑如下：
+
+1. 从后往前遍历 FileSegment，找到包含 offset 的 FileSegment
+2.  获取 offset 所在的 FileSegment，以及它后面一个 FileSegment（如果要读取的数据跨越了两个 FileSegment）
+3. 读取 FileSegment 的数据，合并后返回
+
 ### 4.5 索引文件
+
+分级存储中的索引文件也是以一组 FileSegment 的形式存在。
+
+概要设计中讲到，为了减少分级存储索引文件的 IOPS，所以在设计上对分级存储中保存的 IndexFile 文件格式进行了优化。在分级存储索引项刚开始构建时，这个索引文件处于未压缩状态，文件内容格式与本地存储的索引文件相同。在一个索引文件写满后，会重排该索引文件，写到一个新的文件中，最后上传到分级存储。
+
+#### 4.5.1 索引文件类设计
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202404280113296.png)
+
+`IndexService` 接口中包含了对索引文件操作的封装：`putKey` 和 `queryAsync`，两个索引文件类实现了这个接口。
+
+* IndexStoreFile：表示单个索引文件，包含了压缩前的索引文件引用、压缩后索引文件引用、上传到二级存储的索引文件引用。
+  * fileStatus：索引文件状态
+    * **UNSEALED**：初始状态，**类似**主存索引文件格式（顺序写），存储在本地磁盘上，正在被写入。一般只有最后一个索引文件处于该状态。路径为 `{storePath}/tiered_index_file/{时间戳}`
+    * **SEALED**：已经或正在被压缩成新格式的索引文件，还未上传到外部存储。路径为 `{storePath}/tiered_index_file/compacting/{时间戳}`
+    * **UPLOAD**：已经上传到二级存储。
+  * mappedFile：UNSEALED 状态下索引文件引用，类似本地 IndexFile 的格式
+  * compactMappedFile：SEALED 状态下的索引文件，经过重排后的格式
+  * fileSegment：UPLOAD 状态下的索引文件，已上传二级存储
+* IndexStoreService：IndexStoreFile 文件的容器，内部有排序的 IndexStoreFile 表，实现了索引文件读写接口，作为索引文件操作的入口。也是一个服务线程，用于扫描和压缩已经写满的索引文件。
+  * timeStoreTable：索引文件表，根据创建时间排序的跳表，Key 是创建时间
+  * currentWriteFile：正在写入的索引文件，也是 timeStoreTable 中的最后一个索引文件
+
+#### 4.5.2 索引文件读写
+
+#### 4.5.3 索引文件重排
+
+
 
 ### 4.6 重启恢复和元数据
 
