@@ -1,3 +1,11 @@
+---
+title: Rocketmq 5 分级存储 Tieredstore（RIP-57、RIP-65） 原理详解 & 源码解析
+author: Scarb
+date: 2024-04-29
+---
+
+原文地址：[http://hscarb.github.io/rocketmq/20240429-rocketmq-tieredstore.html](http://hscarb.github.io/rocketmq/20240429-rocketmq-tieredstore.html)
+
 # Rocketmq 5 分级存储 Tieredstore（RIP-57、RIP-65） 原理详解 & 源码解析
 
 ## 1. 背景
@@ -166,7 +174,7 @@ tieredStorageLevel=FORCE
 * **容器层**为上面提到的存储模型除了 `FileSegment` 以外的其他分级存储抽象。
 * **接入层**作为操作分级存储数据的入口，包含整个分级存储的 `MessageStore`，以及从分级存储读数据的 Fetcher 和写数据的 Dispatcher。
 
-![](../assets/rocketmq-tiered-store/hierarchy.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026203.png)
 
 ### 3.4 写消息
 
@@ -283,7 +291,7 @@ RocketMQ 支持以插件的方式引入自定义的存储实现，分级存储�
 
 ### 4.2 存储模型
 
-![](../assets/rocketmq-tiered-store/class-relation.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026671.png)
 
 如上图所示，`TieredMessageStore` 中包含了分级存储所有的存储模型，下面来分别介绍
 
@@ -324,7 +332,7 @@ RocketMQ 支持以插件的方式引入自定义的存储实现，分级存储�
 
 在消息写入 CommitLog 后，reput 线程会扫描 CommitLog 中的消息，然后依次运行 dispatcher 链中的 dispatcher，生成 ConsumeQueue 和 IndexFile。在这之后，会执行分级存储 dispatcher 方法。分级存储的 dispatcher 仅仅根据扫描到的消息创建分级存储对应的队列目录和空的分级存储 FileSegment 文件，上传数据的流程为定时发起。
 
-![](../assets/rocketmq-tiered-store/write-process.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026694.png)
 
 `MessageStoreDispatcherImpl` 是分级存储消息分发器的实现，用于将本地存储的消息提交到分级存储中。它是一个服务线程，每 20s 运行一次，判断缓冲区中等待上传的消息是否达到阈值，如果达到则将本地存储中的这批消息提交到分级存储。
 
@@ -357,21 +365,23 @@ RocketMQ 在多副本的情况下，消息被写入 CommitLog 之后更新 max o
 * append：将数据放入上传缓冲区，等待批量上传。这个过程在这里是同步的。分级存储文件的 max offset 包含了放入缓冲区中等待上传的消息数据。
 * commit：真正将数据上传到二级存储，为异步操作。分级存储文件中的 commit offset 为已经上传到分级存储的消息数据。
 
-整个分发逻辑为：
+`doScheduleDispatch` 整个分发逻辑为：
 
 1. 从起始位置到结束位置遍历队列逻辑偏移量
 2. 根据偏移量获取本地存储中的 ConsumeQueue 单元
 3. 根据 ConsumeQueue 单元查找本地存储 CommitLog，获取消息数据
 4. 将消息数据 append 到分级存储 CommitLog 中的缓存
 5. 提交一个分级存储的 DispatchRequest，append 到分级存储 ConsumeQueue 的缓存
-6. 异步执行 commit，先将 CommitLog 缓存中的数据上传到分级存储，然后将 ConsumeQueue 缓存中的数据上传到二级存储
+6. 异步执行 commit，先将 CommitLog 缓存中的数据上传到分级存储，然后将 ConsumeQueue 缓存中的数据上传到二级存储。上传完成之后更新 commit offset，然后释放 CommitLog 缓冲区和 ConsumeQueue 分发请求缓冲区。
 7. 如果开启 IndexFile，则调用 `constructIndexFile` 构造分级存储 IndexFile，具体逻辑后面会讲
+
+对于上传失败的情况，在 `doScheduleDispatch` 开始时进行判断，分级存储 ConsumeQueue 的 commit offset 是否大于等于 max offset，如果不是则重试上次上传，也就是把上次还在缓冲区的数据重新上传一次。
 
 ### 4.4 读消息
 
 读消息的逻辑引入预读缓存，以加快读取速度、减少对分级存储的访问。读消息的逻辑也经过一次重构，原先的预读缓存使用了拥塞控制算法，每次预读消息量类似拥塞窗口采用加法增、乘法减的流量控制机制，但存在 OOM 的问题。重构后采用更简单明了的预读策略：当缓存中的数据大小大于缓存配置大小的 80% 时就直接走分级存储，解决了 OOM 的问题。
 
-![](../assets/rocketmq-tiered-store/read-process.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026716.png)
 
 #### 4.4.1 TieredMessageStore 读消息
 
@@ -447,19 +457,176 @@ FlatAppendFile 是分级存储 FileSegment 列表的封装，`readAsync` 方法�
   * mappedFile：UNSEALED 状态下索引文件引用，类似本地 IndexFile 的格式
   * compactMappedFile：SEALED 状态下的索引文件，经过重排后的格式
   * fileSegment：UPLOAD 状态下的索引文件，已上传二级存储
-* IndexStoreService：IndexStoreFile 文件的容器，内部有排序的 IndexStoreFile 表，实现了索引文件读写接口，作为索引文件操作的入口。也是一个服务线程，用于扫描和压缩已经写满的索引文件。
+* IndexStoreService：IndexStoreFile 文件的容器，内部有排序的 IndexStoreFile 表，实现了索引文件读写接口，作为索引文件操作的入口。也是一个服务线程，用于扫描和重排已经写满的索引文件。
   * timeStoreTable：索引文件表，根据创建时间排序的跳表，Key 是创建时间
   * currentWriteFile：正在写入的索引文件，也是 timeStoreTable 中的最后一个索引文件
 
 #### 4.5.2 索引文件读写
 
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026743.png)
+
+`IndexStoreService` 作为索引文件的容器和操作入口，保存着索引文件的跳表。该列表最多只允许有一个 `UNSEALED` 的文件，处理写入请求。
+
+##### 写分级存储索引
+
+索引文件的写入在前面写过的分级存储 ConsumeQueue 数据上传完成之后被调用，入口是 `MessageStoreDispatcherImpl#constructIndexFile`，它会调用 `IndexStoreService#putKey` 方法进行写入。`putKey` 中会找到当前 `UNSEALED` 状态的索引文件，调用它的 `putKey` 方法写入，最多重试 3 次。如果文件写满，则创建新的索引文件后，都写入失败则打印错误日志。
+
+索引文件仅在根据 Key 查消息时使用，没有它的情况下也能正常消费消息，所以在多次写入失败的情况下可以放弃写入，它的写入顺序也是最靠后的。
+
+单个索引文件的写入逻辑如下：
+
+1. 判断是否已经写满（索引数量超过最大值，默认 2000w），如果写满则将索引文件状态置为 SEALED 等待压缩，返回文件已满
+2. 将索引项先写入本地的一个临时索引文件中
+
+##### 读分级存储索引
+
+读索引的调用链如图所示，一般由 RocketMQ Admin client 发送 QueryMessage 请求触发，从下到上进行调用
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202404282113622.png)
+
+`IndexStoreService#queryAsync` 作为分级存储索引文件读取的入口，逻辑如下：
+
+1. 获取查询时间范围内的所有索引文件
+2. 逆序遍历索引文件，调用它的 `queryAsync` 方法异步查询索引项
+3. 等待所有查询任务完成，将所有索引文件的查询结果放入结果列表
+
+单个索引文件的读取逻辑如下：
+
+1. 根据索引文件状态判断从哪里读取
+   * UNSEALED/SEALED 状态：从本地未压缩的临时索引文件查询，读取方式和读取普通的本地索引文件类似
+   * UPLOADED：从已上传分级存储的 FileSegment 中读取
+     1. 根据 key 的 hashCode 计算 hash 槽位置
+     2. 读取 hash 槽中的索引项起始位置和总长度
+     3. 根据索引项起始位置和索引项总长度从 FileSegment 读取索引项
+     4. 从读到的索引项开始遍历，根据索引项的时间戳范围和 hashCode 过滤索引项，直到找到足够的索引项
+
 #### 4.5.3 索引文件重排
 
+#### 4.5.3.1 重排流程
 
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026764.png)
+
+索引文件重排的入口是 `IndexStoreService`，它是一个服务线程，每 10s 进行一次扫描，找到索引文件表中下一个 `SEALED` 状态的索引文件，准备重排和上传。
+
+重排和上传的入口函数是 `doCompactThenUploadFile`，它的逻辑如下
+
+1. 如果这个文件还没有被重排，调用 `IndexStoreFile#doCompaction` 进行重排
+   1. 创建一个新的本地内存映射文件，作为重排后的文件，它的目录也是单独的。在没有上传成功之前，重排前后的两个文件同时存在，老文件用来读取，新文件用来上传。
+      * 未重排文件：`{storePath}/tiered_index_file/{时间戳}`
+      * 重排后文件：`{storePath}/tiered_index_file/compacting/{时间戳}`
+   2. 遍历老文件的 hash 槽和索引项，将索引项和 hash 槽写入新文件，此时进行重排
+   3. 更新新文件的头信息
+2. 用重排后新索引文件的 ByteBuffer 在分级存储索引文件的 FlatAppendFile 中创建一个 FileSegment
+3. 上传该 FileSegment 到分级存储
+4. 上传完成之后将该 FileSegment 封装成 IndexStoreFile（UPLOADED 状态），放入 `IndexStoreService` 的跳表（覆盖原来未上传的）。
+5. 删除本地的新老格式的索引文件
+
+#### 4.5.3.2 重排细节
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202404150137847.png)
+
+左边是老的索引文件格式，这里不再赘述。重排的目标是在查询时减少对分级存储的 IOPS，也就是说在查询某个 Key 对应 hash 槽的所有索引项时，最好可以连续读。
+
+所以重排之后的结构就呼之欲出：原来 hash 槽的链表项，在文件中的位置是随机的，通过链表指针的方式连接起来。新的格式直接将同一 hash 槽的索引项在物理位置上连续排列，去掉链表指针也可以节省每个索引项占用的大小（4 Byte）。
+
+重排后的文件相对重排之前：
+
+1. Header 不变、hash 槽和索引项数量不变
+2. hash 槽大小从 4 Byte 扩大到 8 Byte，多了索引项总长度，方便一次性把这个 hash 槽的所有索引项查出来
+   1. 0~4byte：hash 槽索引项的起始位置
+   2. 5~8byte：这个 hash 槽所有索引项的总长度
+3. 索引项经过排序，去掉了链表指针，从 32byte 变为 28byte
 
 ### 4.6 重启恢复和元数据
 
+分级存储的元数据是专门为了恢复分级存储文件引用而设置的，在分级存储相关的 Topic、Queue 或者 FileSegment 文件发生新建/删除时，索引文件会更新并持久化到本地文件中，在重启恢复分级存储模块时读取。
 
+#### 4.6.1 元数据
+
+`DefaultMetadataStore` 作为分级存储元数据管理类，它扩展了 `ConfigManager` 类。
+
+`ConfigManager`  是 RocketMQ 一些动态配置（比如 topic 配置、消费组偏移量等）也用到的配置文件抽象类，它已经实现了 `load` 和 `persist` 方法，用于持久化到本地文件和从本地文件读取。扩展它之后只需要实现 `decode` 方法，定义持久化哪些数据。这里持久化了 5 组元数据表，以 json 的格式存储在 `{storePath}/config/tieredStoreMetadata.json`。
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026787.png)
+
+元数据文件包括两类：
+
+1. `Topic`、`Queue` 的数据，在 `FlatMessageFile` 创建时更新，入口是 `FlatMessageFile` 构造函数。
+2. `FileSegment` 数据，包含创建时间、起始偏移量、大小、状态等。在 FileSegment 创建时更新，入口是 `FlatAppendFile#rollingNewFile`。
+
+一个简单的元数据文件示例如下：
+
+```json
+{
+	"commitLogFileSegmentTable":{
+		"broker-a\\topic-tiered\\0":{0:{
+				"baseOffset":0,
+				"beginTimestamp":1713719372709,
+				"createTimestamp":1713719498811,
+				"endTimestamp":1713719488780,
+				"path":"broker-a\\topic-tiered\\0",
+				"sealTimestamp":0,
+				"size":557667000,
+				"status":0,
+				"type":0
+			}
+		}
+	},
+	"consumeQueueFileSegmentTable":{
+		"broker-a\\topic-tiered\\0":{0:{
+				"baseOffset":0,
+				"beginTimestamp":1713719372709,
+				"createTimestamp":1713719498817,
+				"endTimestamp":1713719488008,
+				"path":"broker-a\\topic-tiered\\0",
+				"sealTimestamp":0,
+				"size":32417620,
+				"status":0,
+				"type":1
+			}
+		}
+	},
+	"indexFileSegmentTable":{},
+	"queueMetadataTable":{
+		"topic-tiered":{0:{
+				"maxOffset":0,
+				"minOffset":0,
+				"queue":{
+					"brokerName":"broker-a",
+					"queueId":0,
+					"topic":"topic-tiered"
+				},
+				"updateTimestamp":1713719498827
+			}
+		}
+	},
+	"topicMetadataTable":{
+		"topic-tiered":{
+			"reserveTime":-1,
+			"status":0,
+			"topic":"topic-tiered",
+			"topicId":2,
+			"updateTimestamp":1713719372725
+		}
+	},
+	"topicSerialNumber":2
+}
+```
+
+#### 4.6.2 重启恢复
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2024/04/1714324026805.png)
+
+恢复的入口是 `TieredMessageStore#load` 方法，它调用分级存储 `FlatFileStore#load` 方法，先恢复分级存储，然后调用本地存储的 `load` 方法恢复本地存储。
+
+`FlatFileStore` 的 `load` 方法中先清空所有分级存储文件，然后调用  `recover` 进行分级存储文件恢复，最后启动定时任务，每分钟扫描和清理过期文件。
+
+recover 方法逻辑如下：
+
+1. 遍历 Topic 元数据，调用 `recoverAsync(toicMetadata)` 并发恢复 Topic，恢复之前获取信号量避免并发度过高
+2. 遍历该 Topic 中的 Queue 元数据，调用 `computeIfAbsent(MessageQueue)` 为每个队列初始化分级存储消息数据文件 FlatMessageFile。初始化分级存储消息数据文件时，会递归恢复 CommitLog、ConsumeQueue、IndexFile 的分级存储文件（也遍历元数据来恢复）
+3. `FlatMessageFile` 的构造函数中会调用 `createFlatFileForCommitLog` 和 `createFlatFileForConsumeQueue` 来恢复对应的 FileSegment
+4. 这两个方法也会调用元数据存储的 `iterateFileSegment` 遍历 FileSegment 的元数据来构造 FileSegment
 
 ## 5. 源码解析
 
@@ -1622,3 +1789,9 @@ protected CompletableFuture<List<IndexItem>> queryAsyncFromSegmentFile(
 * [RocketMQ 多级存储设计与实现](https://blog.lv5.moe/p/introduce-tiered-storage-for-rocketmq)
 * [谈谈 RocketMQ 5.0 分级存储背后一些有挑战的技术优化](https://developer.aliyun.com/article/1441642?spm=a2c6h.24874632.expert-profile.29.5f185d0693jYjN)
 * [RocketMQ5源码（七）分层存储](https://juejin.cn/post/7340603873605222435)
+
+---
+
+欢迎关注公众号【消息中间件】（middleware-mq），更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)
