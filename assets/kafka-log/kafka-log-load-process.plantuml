@@ -1,0 +1,53 @@
+@startuml
+|LogManager|
+start
+:loadLogs;
+note: Loading logs.
+:loadLog;
+note: Loading log '{}'
+|Log|
+:constructor;
+partition loadSegments #pink {
+    partition loadSegmentFiles #lightblue {
+        :loop all files in dir;
+        :create LogSegment from file;
+        if (sanity check txnindex) then (<color:red>Exception, warn: Found a corrupted index file)
+            partition recoverSegment #lightyellow {
+                :rebuildProducerState;
+                note: Loading producer state till
+                |LogSegment|
+                #yellow:recover;
+                |Log|
+                :takeSnapshot;
+                note: Writing producer snapshot
+            }
+        endif
+        :add segment into segments;
+    }
+    partition recoverLog #lightgreen {
+        if (is clean shutdown) then (no)
+            :recover unflushed segments;
+            note: Recovering unflushed segment {}
+            partition recoverSegment #lightyellow {
+                :rebuildProducerState;
+                note: Loading producer state till
+                |LogSegment|
+                partition recover #yellow {
+                    :loop all RecordBatch;
+                    :ensure valid;
+                    :append index;
+                }
+                |Log|
+                :takeSnapshot;
+                note: Writing producer snapshot
+            }
+        else (yes)
+        endif
+    }
+}
+:constructor end;
+note: Completed load of log
+|LogManager|
+end
+note: Logs loading complete in {} ms
+@enduml
