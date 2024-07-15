@@ -11,4 +11,4 @@ AO （ Application Object ）：应用对象。 在 Web 层与 Service 层之间
 VO （ View Object ）：显示层对象，通常是 Web 向模板渲染引擎层传输的对象。
 POJO （ Plain Ordinary Java Object ）：在本手册中，POJO 专指只有 setter/getter/toString 的简单类，包括 DO/DTO/BO/VO 等。
 
-![](https://i.imgur.com/DkO4zJw.jpg)
+![img](./20231116-java-dto-vo-bo.assets/DkO4zJw.jpeg)
