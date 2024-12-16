@@ -122,6 +122,8 @@ def generate_readme_for_dir(dir, folder):
             for name in files:
                 if not name.startswith('2'):
                     continue
+                if not name.endswith('.md'):
+                    continue
                 title = find_first_line_start_with_in_file(os.path.join(DOCS_FOLDER, folder, name)).strip()
                 f.writelines('[{title}]({path})\n\n'.format(title=title, path=name))
 
