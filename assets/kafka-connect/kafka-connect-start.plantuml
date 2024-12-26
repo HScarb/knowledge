@@ -1,0 +1,135 @@
+@startuml
+|ConnectorDistributed|
+start
+:run;
+'Connect 类将 Kafka Connect 过程的所有组件（如管理者、工作节点、存储、命令接口）结合在一起，负责管理它们的生命周期。
+partition startConnect {
+    :log worker info;
+    note: Kafka Connect Worker initializing
+    partition new Plugins {
+        ' 在这里重载所有 Connect 插件
+        |Plugins|
+        :log;
+        note: Scanning for plugin classes
+        ' 用 ServiceLoaderScanner 和 ReflectionScanner 扫描插件
+        :discoverPlugins;
+        note: Scanning plugins with
+        ' 将扫描到的插件安装到一个自定义的类加载器 DelegatingClassLoader 中
+        :initLoaders;
+        note: Added plugin
+    }
+
+    |ConnectorDistributed|
+    ' Kafka 访问客户端
+    :new RestClient;
+    ' Jetty web 服务端
+    :new ConnectRestServer;
+
+    partition createHerder {
+        ' 创建 KafkaOffsetBackingStore，用于保存每个 Connector 当前正在处理的源的偏移量（处理进度/消费位点）
+        ' 保存在管理 Kafka 的 Topic：offset.storage.topic
+        :new KafkaOffsetBackingStore;
+        :new Worker;
+        ' 创建 StatusBackingStore，用于保存 Connector 和 Task 的状态信息，保存在管理 Kafka 的 Topic：status.storage.topic
+        :new KafkaStatusBackingStore;
+        ' 创建 ConfigBackingStore，用于保存 Connector 和 Task 的配置信息，保存在管理 Kafka 的 Topic：config.storage.topic
+        :new KafkaConfigBackingStore;
+        '  Kafka Connect 的 Herder（管理者）
+        :new DistributedHerder;
+    }
+    :new Connect;
+    note: Kafka Connect worker initialization took
+    |Connect|
+    :start;
+    note: Kafka Connect starting
+    |DistributedHerder|
+    :start;
+
+    |Connect|
+    ' 初始化 HTTP endpoints
+    :rest.initializeResources;
+    note: Initializing REST resources
+    end
+
+    |DistributedHerder|
+    start
+    :run;
+    note: Herder starting
+    partition startServices {
+        |Worker|
+        :start;
+        note: Worker starting
+        :GlobalOffsetBackingStore.start;
+        :new SourceTaskOffsetCommitter;
+        note: Worker started
+
+        |DistributedHerder|
+        :StatusBackingStore.start;
+        :ConfigBackingStore.start;
+    }
+    :log;
+    note: Herder started
+
+    while (!stopping)
+        partition tick {
+            ' 尝试在指定超时时间内读取到配置日志（配置存储在 Kafka 的 Topic 中）的末尾。如果不成功，当前的 Worker 会离开集群并等待一段时间再尝试加入。
+            ' 这确保了 Worker 再继续执行任务之前同步了最新的配置。
+            partition readConfigToEnd {
+                :refreshConfigSnapshot;
+                note: Finished reading to end of log
+            }
+            ' 确保当前节点状态为活跃且处于集群中，如果不是，重启并重新加入集群
+            :WorkerGroupMember.ensureActive;
+            ' ensureActive 会调用 RebalanceListener#onAssigned 方法触发重平衡回调
+            partition RebalanceListener#onAssigned {
+                :log;
+                note: Joined group at generation {} with protocol version {} and got
+                :update assignment}
+                :update generation}
+                :rebalanceResolved = false}
+                :member.wakeup]
+            }
+            ' 处理 Connect 集群完成重平衡后的操作
+            partition handleRebalanceCompleted {
+                :readConfigToEnd;
+                :member.requestRejoin;
+                ' 新建连接器的入口
+                partition startWork {
+                    ' 遍历分配给当前节点的连接器，与当前正在运行的连接器进行比较，找出需要启动的连接器，并将其添加到 callables 列表中。
+                    :getConnectorStartingCallable;
+                    note: Starting connectors and tasks using config offset
+                    ' 传入 callables 列表，启动所有需要启动的连接器和任务。
+                    :getTaskStartingCallable;
+                    :startAndStop;
+                    note: Finished starting connectors and tasks
+                }
+                :rebalanceSuccess;
+            }
+            ' 检查密钥轮换
+            :checkForKeyRotation;
+            ' 处理所有外部请请求，会运行 addRequest 添加的请求
+            while (true)
+                :runRequest;
+            endwhile
+            ' 处理重启请求
+            :processRestartRequests;
+            split
+            :updateConfigsWithEager;
+            split again
+            :updateConfigsWithIncrementalCooperative;
+            end split
+            ' 处理 Connector 和 Task 配置更新的入口
+            :processConnectorConfigUpdates;
+            :processTargetStateChanges;
+            :processTaskConfigUpdatesWithIncrementalCooperative;
+            :member.poll]
+            :handleRebalanceCompleted;
+        }
+    endwhile
+    :halt;
+    note: Herder stopped
+    stop
+
+
+}
+@enduml

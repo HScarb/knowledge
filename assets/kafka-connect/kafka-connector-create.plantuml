@@ -1,0 +1,152 @@
+@startuml
+|ConnectorsResource|
+start
+:createConnector;
+|DistributedHerder|
+partition putConnectorConfig {
+    ' 这里 addRequest 添加的是 validateConnectorConfig 这个回调函数
+    :addRequest;
+    ' addRequest 方法会调用，将 Herder 从 tick 方法中的 member.poll 唤醒
+    :member.wakeup]
+    partition validateConnectorConfig {
+        ' validateConnectorConfig 验证成功之后会执行另一个 Lambda 回调函数，在该函数中继续进行 addRequest
+        :addRequest;
+        ' addRequest 方法会调用，将 Herder 从 tick 方法中的 member.poll 唤醒
+        :member.wakeup]
+        :writeToConfigTopicAsLeader;
+    }
+}
+|KafkaConfigBackingStore|
+:putConnectorConfig;
+:sendPrivileged;
+' 发送配置消息到管理 Kafka 的配置 Topic 中
+:configLog.send]
+' 唤醒 configLog 的消费者，让其开始消费配置 Topic 的消息
+:configLog.readToEnd]
+stop
+
+start
+|KafkaBasedLog|
+:run;
+while (true)
+    :readToLogEnd;
+    ' 不断循环 poll 到最新的位点，poll 到新消息后调用对应的 BackingStore 的回调函数
+    :poll;
+    |KafkaConfigBackingStore|
+    :ConsumeCallback#onCompletion;
+endwhile
+|KafkaBasedLog|
+end
+
+|KafkaConfigBackingStore|
+start
+' configLog 消费者消费到新的配置消息，调用回调函数
+:ConsumeCallback#onCompletion;
+' 处理 Connector 配置更新的消息
+partition processConnectorConfigRecord {
+    ' 更新内存中的配置
+    :connectorConfigs.put]
+    ' 设置 Connector 的初始状态为 STARTED
+    :connectorTargetStates.put]
+}
+
+|DistributedHerder|
+:ConfigUpdateListener.onConnectorConfigUpdate;
+note: Connector {} config updated
+:needsReconfigRebalance = true}
+:member.wakeup]
+stop
+
+start
+while (!stopping)
+partition tick {
+
+    ' 确保当前节点状态为活跃且处于集群中，如果不是，重启并重新加入集群
+    :WorkerGroupMember.ensureActive;
+    ' ensureActive 会调用 RebalanceListener#onAssigned 方法触发重平衡回调
+    partition RebalanceListener#onAssigned {
+        :log;
+        note: Joined group at generation {} with protocol version {} and got
+        :update assignment}
+        :update generation}
+        :rebalanceResolved = false}
+        :member.wakeup]
+    }
+    ' 处理 Connect 集群完成重平衡后的操作
+    partition handleRebalanceCompleted {
+        :readConfigToEnd;
+        :member.requestRejoin;
+        ' 新建连接器的入口
+        partition startWork {
+            ' 遍历分配给当前节点的连接器，与当前正在运行的连接器进行比较，找出需要启动的连接器，并将其添加到 callables 列表中。
+            :getConnectorStartingCallable;
+            note: Starting connectors and tasks using config offset
+            ' 传入 callables 列表，启动所有需要启动的连接器和任务。
+            :getTaskStartingCallable;
+            :startAndStop;
+            partition startAndStop {
+                :startConnector;
+                note: Starting connector {}
+                |Worker|
+                partition startConnector {
+                    ' 实例化 Connector
+                    :plugins.newConnector]
+                    note: Creating connector {} of type {}
+                    ' 配置该 Connector 的 offset store
+                    :ConnectorOffsetBackingStore.configure]
+                    :new WorkerConnector;
+                    note: Instantiated connector {} with
+                    :workerConnector.transitionTo(STARTED, onConnectorStateChange)]
+                    :connectors.putIfAbsent]
+                    ' 这里会调用一个回调，这个回调就是一个 WorkerConnector 实例，它是一个 Runnable
+                    :executor.submit(workerConnector)]
+                    note: Finished creating connector {}
+                }
+            }
+            |DistributedHerder|
+            :log;
+            note: Finished starting connectors and tasks
+        }
+        :rebalanceSuccess;
+    }
+}
+endwhile
+end
+
+' Worker#startConnector 最后调用的回调启动的 WorkerConnector Runnable 的主循环
+|WorkerConnector|
+start
+partition doRun {
+    :initialize;
+    while (!stopping)
+        partition doTransitionTo {
+            ' 调用 Connector 的 start 方法
+            |Connector|
+            :start;
+            ' 回调
+            |WorkerConnector|
+            :stateChangeCallback.onCompletion;
+            ' 回调 DistributedHerder 里面定义的 Connector 状态变化方法
+            |DistributedHerder|
+            :startConnector#onInitialStateChange>
+            ' 发送请求给 Herder 处理
+            partition addRequest {
+                ' 请求 Connector 的 Task 配置，检测到配置发生变化时写入配置存储。无限重试
+                :reconfigureConnectorTasksWithRetry;
+                :reconfigureConnectorTasksWithExponentialBackoffRetries;
+                :reconfigureConnector;
+                :publishConnectorTaskConfigs;
+                :writeTaskConfigs;
+                |KafkaConfigBackingStore|
+                ' 读取 Task 配置到最新
+                :putTaskConfigs;
+                ' 发送 Task 配置到管理 Kafka
+                :sendPrivileged;
+                ' 发送失败则继续指数退避后重试发送
+            }
+        }
+        |WorkerConnector|
+    endwhile
+}
+end
+@enduml
