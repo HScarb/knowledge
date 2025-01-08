@@ -76,13 +76,14 @@ partition tick {
     partition handleRebalanceCompleted {
         :readConfigToEnd;
         :member.requestRejoin;
-        ' 新建连接器的入口
+        ' 新建 Connector、Task 的入口
         partition startWork {
-            ' 遍历分配给当前节点的连接器，与当前正在运行的连接器进行比较，找出需要启动的连接器，并将其添加到 callables 列表中。
+            ' 遍历分配给当前节点的 Connector，与当前正在运行的 Connector 进行比较，找出需要启动的 Connector，并将其添加到 callables 列表中
             :getConnectorStartingCallable;
             note: Starting connectors and tasks using config offset
             ' 传入 callables 列表，启动所有需要启动的连接器和任务。
             :getTaskStartingCallable;
+            ' 启动分配到的 Connector  和 Task
             :startAndStop;
             partition startAndStop {
                 :startConnector;
@@ -101,6 +102,9 @@ partition tick {
                     ' 这里会调用一个回调，这个回调就是一个 WorkerConnector 实例，它是一个 Runnable
                     :executor.submit(workerConnector)]
                     note: Finished creating connector {}
+                }
+                partition startTask {
+
                 }
             }
             |DistributedHerder|
