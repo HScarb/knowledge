@@ -58,3 +58,5 @@
 
 [Rocketmq 5 分级存储 Tieredstore（RIP-57、RIP-65） 原理详解 & 源码解析](20240429-rocketmq-tieredstore.md)
 
+[RocketMQ 事务消息原理详解 & 源码解析](20250131-rocketmq-transactional-message.md)
+

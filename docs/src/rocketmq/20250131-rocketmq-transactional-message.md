@@ -1,3 +1,11 @@
+---
+title: RocketMQ 事务消息原理详解 & 源码解析
+author: Scarb
+date: 2025-01-31
+---
+
+原文地址：[http://hscarb.github.io/rocketmq/20250131-rocketmq-transactional-message.html](http://hscarb.github.io/rocketmq/20250131-rocketmq-transactional-message.html)
+
 # RocketMQ 事务消息原理详解 & 源码解析
 
 ## 1. 背景
@@ -192,7 +200,7 @@ RocketMQ 的事务实现方式为二阶段提交：
 
 ### 4.1 事务消息发送
 
-![](../assets/rocketmq-transaction/rocketmq-transaction-send.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2025/02/1738347473287.png)
 
 #### 4.1.1 生产者发送事务消息
 
@@ -234,7 +242,7 @@ Broker 的 `EndTransactionProcessor` 的 `processRequest` 方法处理事务执�
 
 ### 4.2 事务状态回查
 
-![](../assets/rocketmq-transaction/rocketmq-transaction-check.drawio.png)
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2025/02/1738347473545.png)
 
 #### 4.2.1 Broker 回查事务状态
 
@@ -1163,3 +1171,9 @@ public void checkTransactionState(final String addr, final MessageExt msg,
 - [RocketMQ 设计文档——事务消息](https://github.com/apache/rocketmq/blob/master/docs/cn/design.md#5-%E4%BA%8B%E5%8A%A1%E6%B6%88%E6%81%AF)
 - [官方文档——事务消息](https://rocketmq.apache.org/zh/docs/featureBehavior/04transactionmessage)
 - [RocketMQ 源码分析事务消息系列——丁威](https://blog.csdn.net/prestigeding/article/details/81259646)
+
+---
+
+欢迎关注公众号【消息中间件】（middleware-mq），更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)
