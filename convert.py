@@ -46,7 +46,7 @@ def find_first_line_start_with_in_file(file_path):
                 return line[2:]
 
 
-def _replace_image_path_to_github(line):
+def _replace_image_path_to_github(line, file_path):
     pattern = r'!\[(.*)\]\(\.\./(assets/.+)\)'
     re_img_url = re.compile(pattern)
     match = re_img_url.match(line)
@@ -61,10 +61,20 @@ def _replace_image_path_to_github(line):
         l = re.sub(pattern=pattern,
                    repl='[\\1]: https://raw.githubusercontent.com/HScarb/knowledge/master/\\2', string=line)
         return l
+    # Typora 插入的图片格式 `![](./xxxx.assets/xxx)`
+    pattern = r'!\[(.*)\]\(\./(.+?)\.assets/(.+?)\)'
+    re_img_url = re.compile(pattern)
+    match = re_img_url.match(line)
+    if match:
+        base_dir = file_path.split(os.sep)[0]
+        l = re.sub(pattern=pattern,
+                   repl='![\\1](https://raw.githubusercontent.com/HScarb/knowledge/master/' + base_dir + '/\\2.assets/\\3)', 
+                   string=line)
+        return l
     return line
 
 
-def _upload_local_image_to_oss(line):
+def _upload_local_image_to_oss(line, file_path):
     if line.startswith('[TOC]'):
         return '[[toc]]' + os.linesep
     # upload image in format like: `![](../assets/xxx)`
@@ -79,8 +89,20 @@ def _upload_local_image_to_oss(line):
     pattern = r'\[(\d+)\]: \.\./(assets/.+)'
     re_img_url = re.compile(pattern)
     match = re_img_url.match(line)
-    if (match):
+    if match:
         repl = '[\\1]: {}'.format(aliyun_oss.upload_to_oss(match.groups()[1]))
+        l = re.sub(pattern=pattern, repl=repl, string=line)
+        return l
+    # typora 插入的图片格式
+    # upload image in format like: `![](./xxxx.assets/xxx)`
+    pattern = r'!\[(.*)\]\(\./(.+?)\.assets/(.+?)\)'
+    re_img_url = re.compile(pattern)
+    match = re_img_url.match(line)
+    if match:
+        # 构建完整的本地图片路径
+        base_dir = file_path.split(os.sep)[0]
+        file_path = os.path.join(base_dir, f"{match.groups()[1]}.assets/{match.groups()[2]}")
+        repl = '![\\1]({})'.format(aliyun_oss.upload_to_oss(file_path))
         l = re.sub(pattern=pattern, repl=repl, string=line)
         return l
     return line
@@ -96,7 +118,7 @@ def convert_file_with_lambda(file_path, output_path, fn, prefix='', suffix=''):
         lines = f.readlines()
         f_out.write(prefix)
         for line in lines:
-            f_out.write(fn(line))
+            f_out.write(fn(line, file_path))
         f_out.write(suffix)
 
 
