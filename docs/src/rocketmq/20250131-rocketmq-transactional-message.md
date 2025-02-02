@@ -204,6 +204,8 @@ RocketMQ 的事务实现方式为二阶段提交：
 
 #### 4.1.1 生产者发送事务消息
 
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2025/02/1738518692741.png)
+
 RocketMQ 为事务消息定义了专门的生产者类型 `TransactionMQProducer` 和本地事务执行接口 `TransactionListener`。
 
 调用事务生产者的 `sendMessageInTransaction` 方法发送事务消息，该方法会调用 `DefaultMQProducerImpl` 的 `sendMessageInTransaction` 方法，事务消息发送的主要逻辑都在该方法中。
@@ -216,6 +218,8 @@ RocketMQ 为事务消息定义了专门的生产者类型 `TransactionMQProducer
 4. 调用 `endTransaction` 方法，通知 Broker 本地事务执行结果。这里是异步单向请求，不需要等待响应。
 
 #### 4.1.2 Broker 接收事务半消息
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2025/02/1738518693004.png)
 
 Broker 的消息生产请求处理器 `SendMessageProcessor` 的 `processRequest` 方法处理生产者发来的普通消息和事务消息。
 
@@ -246,6 +250,8 @@ Broker 的 `EndTransactionProcessor` 的 `processRequest` 方法处理事务执�
 
 #### 4.2.1 Broker 回查事务状态
 
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2025/02/1738518693032.png)
+
 Broker 的服务线程 `TransactionalMessageCheckService` 每 30s 触发一次 `TransactionalMessageServiceImpl#check` 方法进行事务消息的回查。该方法会从半消息 Topic 中取出半消息，与 OP Topic 中的消息进行匹配（匹配上则认为处理完）。对于没有处理完的半消息，发送回查请求给生产者组中的一个生产者，触发生产者上报本地事务执行状态。它的详细逻辑如下：
 
 * 获取事务半消息 Topic 的所有队列，然后遍历这些队列（默认只有 1 个队列）
@@ -263,6 +269,8 @@ Broker 的服务线程 `TransactionalMessageCheckService` 每 30s 触发一次 `
       7. 回查时会复原半消息的原始 Topic 和队列，然后将其作为回查请求体发送给生产者。
 
 #### 4.2.2 生产者处理事务状态回查请求
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/knowledge/2025/02/1738518693394.png)
 
 生产者处理 Broker 回查请求的主要方法是 `DefaultMQProducerImpl#checkLocalTransaction`，它根据 Broker 发回的半消息获取本地事务执行结果，然后将执行结果发回 Broker。
 

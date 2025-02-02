@@ -1,0 +1,65 @@
+@startuml
+
+top to bottom direction
+
+' handler
+interface DLedgerClientProtocolHandler {
+    + handleAppend(AppendEntryRequest): AppendEntryResponse
+    + handleGet(GetEntriesRequest): GetEntriesResponse
+    + handleMetadata(MetadataRequest): MetadataResponse
+    + handleLeadershipTransfer(LeadershipTransferRequest): LeadershipTransferResponse
+}
+
+interface DLedgerProtocolHandler implements DLedgerClientProtocolHandler {
+    + handleVote(VoteRequest): VoteResponse
+    + handleHeartBeat(HeartBeatRequest): HeartBeatResponse
+    + handlePull(PullEntriesRequest): PullEntriesResponse
+    + handlePush(PushEntryRequest): PushEntryResponse
+}
+
+' protocol
+
+interface DLedgerClientProtocol {
+    + metadata(MetadataRequest): MetadataResponse
+    + get(GetEntriesRequest): GetEntriesResponse
+    + leadershipTransfer(LeadershipTransferRequest): LeadershipTransferResponse
+    + append(AppendEntryRequest): AppendEntryResponse
+}
+
+interface DLedgerProtocol implements DLedgerClientProtocol {
+    + vote(VoteRequest): VoteResponse
+    + heartbeat(HeartBeatRequest): HeartBeatResponse
+    + pull(PullEntriesRequest): PullEntriesResponse
+    + push(PushEntryRequest): PushEntryResponse
+}
+
+abstract class DLedgerRpcService implements DLedgerProtocolHandler, DLedgerProtocol {
+}
+
+class DLedgerRpcNettyService extends DLedgerRpcService {
+}
+
+class DLedgerServer {
+    - memberState: MemberState
+    - dLedgerStore: DLedgerStore
+    - dLedgerRpcService: DLedgerRpcService
+    - dLedgerEntryPusher: DLedgerEntryPusher
+    - dLedgerLeaderElector: DLedgerLeaderElector
+    - executorService: ScheduledExecutorService
+    - fsmCaller: Optional<StateMachineCaller>
+    
+    + registerStateMachine(StateMachine)
+    + handleHeartBeat(HeartBeatRequest): HeartBeatResponse
+    + handleVote(VoteRequest): VoteResponse
+    + handleAppend(AppendEntryRequest): AppendEntryResponse
+    + handleGet(GetEntriesRequest): GetEntriesResponse
+    + handleMetadata(MetadataRequest): MetadataResponse
+    + handlePull(PullEntriesRequest): PullEntriesResponse
+    + handlePush(PushEntriesRequest): PushEntriesResponse
+    + handleLeadershipTransfer(LeadershipTransferRequest): LeadershipTransferResponse
+}
+
+DLedgerServer ..|> DLedgerProtocolHandler
+DLedgerServer *-- DLedgerRpcNettyService
+
+@enduml
