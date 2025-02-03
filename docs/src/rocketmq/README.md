@@ -60,3 +60,5 @@
 
 [RocketMQ 事务消息原理详解 & 源码解析](20250131-rocketmq-transactional-message.md)
 
+[RocketMQ DLedger Leader 选举 流程详解 & 源码解析](20250204-rocketmq-dledger-leader-election.md)
+
