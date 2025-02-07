@@ -1,5 +1,7 @@
 # other
 
+[Vim笔记](20191229-vim-note.md)
+
 [Erlang 学习笔记](20220614-erlang-note.md)
 
 [Arthas 笔记](20230306-arthas-note.md)
