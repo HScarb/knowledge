@@ -1,0 +1,22 @@
+@startuml
+|DLedgerCommitLog|
+start
+:asyncPutMessage();
+|DLedgerServer|
+partition handleAppend() {
+    :validate request;
+    |DLedgerStore|
+    :appendAsLeader();
+    |DLedgerServer|
+    :appended entry;
+    |DLedgerEntryPusher|
+    partition waitAck() {
+        :new AppendFuture();
+        :pendingAppendResponsesByTerm/
+    }
+    |DLedgerServer|
+    :append future;
+}
+|DLedgerCommitLog|
+end
+@enduml
