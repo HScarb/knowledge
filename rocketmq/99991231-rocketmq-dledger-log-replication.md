@@ -4,6 +4,8 @@
 
 ## 2. 概要设计
 
+![](./99991231-rocketmq-dledger-log-replication.assets/dledger-entry-push-component.drawio.png)
+
 ## 3. 详细设计
 
 ### 3.1 Leader 日志存储

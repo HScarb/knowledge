@@ -5,14 +5,29 @@ start
 |DLedgerServer|
 partition handleAppend() {
     :validate request;
-    |DLedgerStore|
-    :appendAsLeader();
+    partition appendAsLeader() {
+        |DLedgerMmapFileStore|
+        :dataFileList.preAppend();
+        note right: calculate append position
+        :dataFileList.append();
+        :indexFileList.append();
+        :increase and update ledgerEndIndex & ledgerEndTerm;
+    }
     |DLedgerServer|
     :appended entry;
     |DLedgerEntryPusher|
     partition waitAck() {
+        :updatePeerWaterMark();
+        note right: update leader's ledger index
         :new AppendFuture();
+        ' 每个 term 的待响应的 AppendEntry 请求表
         :pendingAppendResponsesByTerm/
+        ' 这里是一种通用的异步编程技巧，Leader节点需要等待
+        ' 从节点复制完数据，通常会返回给客户端一个Future对象，客户端可
+        ' 以调用该Future的get()方法同步等待结果，而服务端会将日志序号作
+        ' 为键，Future作为值存储在内存（ConcurrentMap）中。当结果异步返
+        ' 回后，需要根据日志序号找到对应的Future对象，最后填充结果，以
+        ' 便客户端被唤醒，从而得到响应结果
     }
     |DLedgerServer|
     :append future;
