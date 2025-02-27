@@ -1,0 +1,30 @@
+@startuml QuorumAckChecker_doWork
+
+' Define swimlanes for different classes
+|QuorumAckChecker|
+|DLedgerStore|
+
+|QuorumAckChecker|
+start
+
+:clean expired APPEND requests, return TERM_CHANGED;
+
+
+' Calculate quorum index
+#LightBlue:Get peer watermarks for current term;
+:Sort watermarks in descending order;
+:Calculate quorum index (middle value);
+
+|DLedgerStore|
+#LightGray:Update committedIndex;
+|QuorumAckChecker|
+
+' Complete pending requests
+:Process pending requests from\nquorumIndex down to lastQuorumIndex;
+note right: Complete futures with success responses
+
+|QuorumAckChecker|
+#AntiqueWhite:Update lastQuorumIndex;
+
+stop
+@enduml

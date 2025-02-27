@@ -1,0 +1,77 @@
+@startuml
+|EntryDispatcher|
+start
+' 主节点向从节点发送推送请求的类型，在PushEntryRequest.Type中定义，
+' 可选值如下:
+'
+' 1. COMPARE：如果Leader节点发生变化，新的Leader节点需要与
+'    它的从节点日志条目进行比较，以便截断从节点多余的数据。
+' 2. TRUNCATE：如果Leader节点通过索引完成日志对比后，发现从
+'    节点存在多余的数据（未提交的数据），则Leader节点将发送
+'    TRUNCATE给它的从节点，删除多余的数据，实现主从节点数据一
+'    致性。
+' 3. APPEND：将日志条目追加到从节点。
+' 4. COMMIT：通常Leader节点会将提交的索引附加到append请求，如果
+'    append请求很少且分散，Leader节点将发送一个单独的请求来
+'    通知从节点提交索引。
+partition "doWork() infinite loop" {
+    partition checkAndFreshState() {
+        :if not leader, return;
+        :if new leader, changeState(COMPARE);
+    }
+    if (request type) then (COMPARE)
+        partition "doCompare() infinite loop" {
+            :checkAndFreshState();
+            :new cluster, break;
+            :get entry to compare from store;
+            :push compare request to follower;
+            :calculate index to truncate by compare result;
+            :changeState(TRUNCATE);
+            partition doTruncate() {
+                :get entry to start truncating from store;
+                :push truncate request to follower;
+                :changeState(APPEND);
+            }
+        }
+    else (APPEND)
+        partition "doAppend() infinite loop" {
+            :checkAndFreshState();
+            if (all entries has been pushed to follower) then
+                :doCommit();
+                :break;
+            endif
+            if (pending append request exceeds 1000) then
+                :doCheckAppendResponse();
+                note right: re-push timeout pending append requests
+                :break;
+            endif
+            partition doAppendInner() {
+                :getDLedgerEntryForAppend();
+                note right: get entry to append from store by writeIndex;
+                :checkQuotaAndWait();
+                note right
+                check if append throughput exceeds limit
+                ===
+                * pending append request exceeds 1000
+                * log difference exceeds 300 MB
+                * append throughput exceeds 20 MB/s
+                ===
+                sleep till end of this second
+                endnote
+                :push append request to follower;
+                :put to append pending map;
+                if (response) then (SUCCESS)
+                    :remove from append pending map;
+                    #LightBlue:updatePeerWaterMark();
+                    :wakeup QuorumAckChecker;
+                else (INCONSISTENT_STATE)
+                    :changeState(COMPARE);
+                endif
+            }
+            :writeIndex++;
+            note right: prepare to append next entry
+        }
+    endif
+}
+end
+@enduml

@@ -17,7 +17,7 @@ partition handleAppend() {
     :appended entry;
     |DLedgerEntryPusher|
     partition waitAck() {
-        :updatePeerWaterMark();
+        #LightBlue:updatePeerWaterMark();
         note right: update leader's ledger index
         :new AppendFuture();
         ' 每个 term 的待响应的 AppendEntry 请求表
