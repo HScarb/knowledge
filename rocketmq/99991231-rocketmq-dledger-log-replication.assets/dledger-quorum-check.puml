@@ -1,0 +1,48 @@
+@startuml QuorumAckChecker_doWork
+
+' Define swimlanes for different classes
+|QuorumAckChecker|
+|DLedgerEntryPusher|
+|DLedgerStore|
+|StateMachineCaller|
+
+|QuorumAckChecker|
+start
+
+' Get current term 
+:Get current term;
+|DLedgerEntryPusher|
+:Clean expired terms data;
+|QuorumAckChecker|
+
+' Calculate quorum index
+:Get peer watermarks for current term;
+:Sort watermarks in descending order;
+:Calculate quorum index (middle value);
+
+' Process based on state machine
+if (State machine exists) then (yes)
+  |DLedgerStore|
+  :Update committedIndex;
+  |StateMachineCaller|
+  :Apply committed logs (onCommitted);
+  |QuorumAckChecker|
+else (no)
+  |DLedgerStore|
+  :Update committedIndex;
+  |QuorumAckChecker|
+  
+  ' Complete pending requests
+  :Process pending requests from\nquorumIndex down to lastQuorumIndex;
+  note right: Complete futures with success responses
+  
+  |DLedgerEntryPusher|
+  :Handle timeouts if needed;
+  |QuorumAckChecker|
+endif
+
+:Update lastQuorumIndex;
+
+stop
+
+@enduml

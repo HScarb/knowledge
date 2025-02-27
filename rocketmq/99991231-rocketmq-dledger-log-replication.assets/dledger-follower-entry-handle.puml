@@ -1,0 +1,58 @@
+@startuml
+|DLedgerEntryPusher|
+start
+partition handlePush() {
+    switch (request type)
+    case (APPEND)
+        #palegreen:put to writeRequestMap;
+    case (COMMIT)
+        #pink:put to compareOrTruncateRequests;
+    case (COMPARE/TRUNCATE)
+        #palegreen:clear writeRequestMap;
+        #pink:put to compareOrTruncateRequests;
+    endswitch
+}
+:wakeup();
+stop
+
+start
+partition doWork() {
+    if (<back:pink>compareOrTruncateRequests) then (non-empty)
+        #pink:poll request from compareOrTruncateRequests;
+        if (COMPARE) then
+            partition handleDoCompare() {
+                :get local entry by compareIndex;
+                if (entry exist?) then (Y)
+                    :return SUCCESS with entry;
+                else (N)
+                    :return INCONSISTENT_STATE;
+                endif
+            }
+        elseif (TRUNCATE)
+            partition handleDoTruncate() {
+                |DLedgerMmapFileStore|
+                :truncate();
+                |DLedgerEntryPusher|
+                :updateCommittedIndex();
+            }
+        elseif (COMMIT)
+            partition handleDoCommit() {
+                :updateCommittedIndex();
+            }
+        endif
+    else (empty)
+        #palegreen:get request from writeRequestMap;
+        if (exist request) then (N)
+            :checkAbnormalFuture();
+        else (Y)
+            partition handleDoAppend() {
+                |DLedgerMmapFileStore|
+                :appendAsFollower();
+                |DLedgerEntryPusher|
+                :updateCommittedIndex();
+            }
+        endif
+    endif
+}
+stop
+@enduml
