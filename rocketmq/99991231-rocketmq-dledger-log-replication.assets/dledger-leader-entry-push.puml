@@ -36,11 +36,11 @@ partition "doWork() infinite loop" {
     else (APPEND)
         partition "doAppend() infinite loop" {
             :checkAndFreshState();
-            if (all entries has been pushed to follower) then
+            if (all entries has been pushed to follower) then (Y)
                 :doCommit();
                 :break;
             endif
-            if (pending append request exceeds 1000) then
+            if (pending append request exceeds 1000) then (Y)
                 :doCheckAppendResponse();
                 note right: re-push timeout pending append requests
                 :break;

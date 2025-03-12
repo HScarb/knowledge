@@ -1,4 +1,4 @@
-@startuml QuorumAckChecker_doWork
+@startuml
 
 ' Define swimlanes for different classes
 |QuorumAckChecker|

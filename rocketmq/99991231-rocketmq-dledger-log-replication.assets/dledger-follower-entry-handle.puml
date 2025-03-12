@@ -1,5 +1,5 @@
 @startuml
-|DLedgerEntryPusher|
+|EntryHandler|
 start
 partition handlePush() {
     switch (request type)
@@ -32,7 +32,7 @@ partition doWork() {
             partition handleDoTruncate() {
                 |DLedgerMmapFileStore|
                 :truncate();
-                |DLedgerEntryPusher|
+                |EntryHandler|
                 :updateCommittedIndex();
             }
         elseif (COMMIT)
@@ -48,7 +48,7 @@ partition doWork() {
             partition handleDoAppend() {
                 |DLedgerMmapFileStore|
                 :appendAsFollower();
-                |DLedgerEntryPusher|
+                |EntryHandler|
                 :updateCommittedIndex();
             }
         endif
