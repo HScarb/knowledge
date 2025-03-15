@@ -33,7 +33,29 @@ DLedger 的实现大体可以分为两个部分，Leader 选举和日志复制�
 13. 大多数节点已经写入的日志序号和它之前的日志序号都认为已经写入完成，回填之前日志追加请求的 Future 结果。
 14. 返回结果给客户端。
 
+---
+
+我们可以把日志复制的流程分为 4 个部分：
+
+1. Leader 接收日志请求并存储，包含上面的 2~4 步。
+2. Leader 的日志转发线程将日志转发到 Follower，包含上面的 5~6 步。
+3. Follower 的请求处理线程接收和保存 Leader 的推送的日志，包含上面的 7~9 步。
+4. Leader 的结果仲裁线程仲裁日志在所有节点保存的状态，更新日志水位，包含上面的 10~13 步。
+
+在下面的详细设计中，会按照这 4 个步骤来进行分析。
+
 ## 3. 详细设计
+
+在概要设计中，我们把 DLedger 日志复制分成 4 个主要步骤，在 DLedger 中，这 4 个步骤都主要在类 `DLedgerEntryPusher` 中实现，其中后面 3 个步骤有专门的线程进行处理，这些线程都作为 `DLedgerEntryPusher` 的内部类存在，这样就可以访问 `DLedgerEntryPusher` 的私有字段。
+
+* Leader 接收日志请求并存储：由 `DLedgerMmapFileStore` 保存日志，然后由 `DLedgerEntryPusher` 等待日志转发完成。
+* Leader 转发日志到 Follower：由 `EntryDispatcher` 处理。
+* Follower 接收和保存 Leader 推送的日志：由 `EntryHandler` 处理。
+* Leader 仲裁复制结果：由 `QuorumAckChecker` 处理。
+
+---
+
+在具体讲解每个步骤之前，我们先来看一下 DLedger 日志复制中用到的容易混淆的几个 index 的含义。只有 `DLedgerMmapFileStore` 的两个字段是定时持久化的，其他的几个 index 字段都是对应的处理类在处理业务逻辑时需要临时用到的。
 
 | 字段名               | 所属类               | 持久化 | 含义                                                         |
 | -------------------- | -------------------- | ------ | ------------------------------------------------------------ |
@@ -42,6 +64,8 @@ DLedger 的实现大体可以分为两个部分，Leader 选举和日志复制�
 | committedIndex       | DLedgerMmapFileStore | √      | 已被集群中超过半数节点确认的 index，表示已提交（可应用到状态机）的最大index |
 | lastQuorumIndex      | QuorumAckChecker     | ×      | 仲裁成功的最大 index，表示已达到多数节点复制确认的最大 index |
 | peerWaterMarksByTerm | DLedgerEntryPusher   | ×      | 每个 term，集群内各个节点已经确认存储的最大 index（水位线）  |
+
+他们的大小关系通常是：
 
 ```java
 lastQuorumIndex ≤ committedIndex ≤ ledgerEndIndex
@@ -1432,3 +1456,6 @@ private class QuorumAckChecker extends ShutdownAbleThread {
 ```
 
 ## 参考资料
+
+- RocketMQ 技术内幕 第2版
+- [The Secret Lives of Data - Raft](http://thesecretlivesofdata.com/raft/)
