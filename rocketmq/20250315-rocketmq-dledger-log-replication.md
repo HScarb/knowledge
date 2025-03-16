@@ -14,7 +14,7 @@ DLedger 的实现大体可以分为两个部分，Leader 选举和日志复制�
 
 ## 2. 概要设计
 
-![](./99991231-rocketmq-dledger-log-replication.assets/dledger-entry-push-component.drawio.png)
+![](./20250315-rocketmq-dledger-log-replication.assets/dledger-entry-push-component.drawio.png)
 
 整个日志复制流程如上图所示：
 
@@ -73,7 +73,7 @@ lastQuorumIndex ≤ committedIndex ≤ ledgerEndIndex
 
 ### 3.1 Leader 日志存储
 
-![](./99991231-rocketmq-dledger-log-replication.assets/dledger-append-leader.png)
+![](./20250315-rocketmq-dledger-log-replication.assets/dledger-append-leader.png)
 
 1. 对于启动 DLedger 模式的 RocketMQ Broker，其 CommitLog 会被初始化为 `DLedgerCommitLog`，它的 `handleAppend` 方法会作为 `DLedgerServer` 的入口，调用 DLedger 的日志追加逻辑。
 2. 先校验日志追加请求的合法性，然后调用 `appendAsLeader` 将日志追加到 Leader 本地存储。
@@ -111,7 +111,7 @@ stateDiagram-v2
 
 `EntryDispatcher` 的执行逻辑如下：
 
-![](./99991231-rocketmq-dledger-log-replication.assets/dledger-leader-entry-push.png)
+![](./20250315-rocketmq-dledger-log-replication.assets/dledger-leader-entry-push.png)
 
 1. 检查和刷新节点状态，如果不是 Leader 则返回，如果是，则继续判断 `EntryDispatcher` 的状态。
 2. 如果是新 Leader，初始状态是 `COMPARE`，进入 `doCompare` 方法。
@@ -141,7 +141,7 @@ stateDiagram-v2
 
 Follower 收到 Leader 发来的推送请求会进行处理，根据请求类型不同，进行不同的逻辑。
 
-![](./99991231-rocketmq-dledger-log-replication.assets/dledger-follower-entry-handle.png)
+![](./20250315-rocketmq-dledger-log-replication.assets/dledger-follower-entry-handle.png)
 
 * `EntryHandler` 的 `handlePush` 方法接收 Leader 的推送请求，把请求放入对应的等待表中，唤醒 `EntryHandler` 线程后续从等待表中提取和处理。
 * 主要有两个请求等待表
@@ -163,7 +163,7 @@ Follower 收到 Leader 发来的推送请求会进行处理，根据请求类型
 
 Leader 在收到 Follower `APPEND` 成功的响应后会唤醒 `QuorumAckChecker` 线程，进行结果检查。`QuorumAckChecker` 的 `doWork` 方法是其主逻辑循环，逻辑如下：
 
-![](./99991231-rocketmq-dledger-log-replication.assets/dledger-quorum-check.png)
+![](./20250315-rocketmq-dledger-log-replication.assets/dledger-quorum-check.png)
 
 1. 清除过期的（term 与当前不同）被挂起的 APPEND 请求
 2. 获取当前 term 的水位表，水位表中包含了集群中所有节点的当前日志复制水位。

@@ -62,3 +62,5 @@
 
 [RocketMQ DLedger Leader 选举 流程详解 & 源码解析](20250204-rocketmq-dledger-leader-election.md)
 
+[RocketMQ DLedger 日志复制 流程详解 & 源码解析](20250315-rocketmq-dledger-log-replication.md)
+

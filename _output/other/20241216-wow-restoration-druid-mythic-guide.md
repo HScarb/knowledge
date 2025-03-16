@@ -1697,3 +1697,8 @@ CkGAAAAAAAAAAAAAAAAAAAAAAsxMzYjZmZmFz2AMLLstMmBAAAAAAAAAAAwyAMzAjmhZmxMMzMg2AAAA
 >
 > 关于第二个问题（蓝耗），一般情况下奶德点了变形大师天赋，不会缺蓝。在 Boss 战治疗压力低的时候进行输出顺便回蓝。在高层丰饶下的愈合也很省蓝。
 
+---
+
+欢迎关注公众号【消息中间件】（middleware-mq），更新消息中间件的源码解析和最新动态！
+
+![](https://scarb-images.oss-cn-hangzhou.aliyuncs.com/img/202205170102971.jpg)
