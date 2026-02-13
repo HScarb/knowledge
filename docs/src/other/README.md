@@ -16,5 +16,5 @@
 
 [一致性哈希 原理和实现](20231015-consistent-hash.md)
 
-[Echo 职业选手写的奶德大秘境完全指南 and 3000 分奶德倾囊相授](20241216-wow-restoration-druid-mythic-guide.md)
+[使用 Claude Code 进行 vibe coding 编程最佳实践](20260211-vibe-coding-best-practice.md)
 
